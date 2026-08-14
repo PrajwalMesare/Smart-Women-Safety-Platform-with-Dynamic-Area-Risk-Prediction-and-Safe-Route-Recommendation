@@ -7,3 +7,7 @@ scikit-learn
 nbformat
 matplotlib
 seaborn
+joblib
+osmnx
+twilio
+python-dotenv

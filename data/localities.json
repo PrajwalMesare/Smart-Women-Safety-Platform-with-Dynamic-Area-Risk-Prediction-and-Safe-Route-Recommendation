@@ -1,0 +1,23 @@
+{
+  "_comment": "Approximate real-world centroid coordinates for 18 Nagpur localities, plus per-locality environmental features used by the risk model. Feature values are illustrative/synthetic (not sourced from an official crime dataset) but are DISTINCT per locality, unlike the old app.py which used one identical feature set for every edge in the city. Replace 'features' with real municipal/crime-bureau data when available.",
+  "localities": [
+    {"name": "Dharampeth",     "lat": 21.1394, "lon": 79.0592, "lighting": 7.8, "dark_spot": 0, "crowd": 2, "police_km": 0.9},
+    {"name": "Hingna",         "lat": 21.1204, "lon": 78.9459, "lighting": 4.1, "dark_spot": 1, "crowd": 0, "police_km": 3.8},
+    {"name": "Jaripatka",      "lat": 21.1856, "lon": 79.0928, "lighting": 4.6, "dark_spot": 1, "crowd": 1, "police_km": 2.9},
+    {"name": "Beltarodi",      "lat": 21.1697, "lon": 79.1653, "lighting": 3.5, "dark_spot": 1, "crowd": 0, "police_km": 4.4},
+    {"name": "Hudkeshwar",     "lat": 21.0862, "lon": 79.0273, "lighting": 4.9, "dark_spot": 1, "crowd": 0, "police_km": 3.2},
+    {"name": "Ramdaspeth",     "lat": 21.1394, "lon": 79.0783, "lighting": 8.4, "dark_spot": 0, "crowd": 2, "police_km": 0.6},
+    {"name": "Sitabuldi",      "lat": 21.1489, "lon": 79.0800, "lighting": 8.9, "dark_spot": 0, "crowd": 2, "police_km": 0.4},
+    {"name": "Katol Road",     "lat": 21.1721, "lon": 79.0271, "lighting": 4.3, "dark_spot": 1, "crowd": 1, "police_km": 3.1},
+    {"name": "Dhantoli",       "lat": 21.1319, "lon": 79.0894, "lighting": 7.1, "dark_spot": 0, "crowd": 1, "police_km": 1.1},
+    {"name": "Wardhaman Nagar","lat": 21.1656, "lon": 79.1181, "lighting": 5.8, "dark_spot": 0, "crowd": 1, "police_km": 2.0},
+    {"name": "Itwari",         "lat": 21.1558, "lon": 79.1017, "lighting": 6.2, "dark_spot": 0, "crowd": 2, "police_km": 1.3},
+    {"name": "Sadar Bazar",    "lat": 21.1633, "lon": 79.0761, "lighting": 7.5, "dark_spot": 0, "crowd": 2, "police_km": 0.8},
+    {"name": "Nari Road",      "lat": 21.1978, "lon": 79.1289, "lighting": 3.2, "dark_spot": 1, "crowd": 0, "police_km": 4.9},
+    {"name": "Ajni",           "lat": 21.1258, "lon": 79.0672, "lighting": 6.6, "dark_spot": 0, "crowd": 1, "police_km": 1.6},
+    {"name": "Khamla",         "lat": 21.1147, "lon": 79.0508, "lighting": 5.5, "dark_spot": 0, "crowd": 1, "police_km": 2.2},
+    {"name": "Kalyani Nagar",  "lat": 21.1042, "lon": 79.0917, "lighting": 4.0, "dark_spot": 1, "crowd": 0, "police_km": 3.6},
+    {"name": "Gittikhadan",    "lat": 21.1789, "lon": 79.0631, "lighting": 3.8, "dark_spot": 1, "crowd": 0, "police_km": 4.1},
+    {"name": "Maharajbagh",    "lat": 21.1436, "lon": 79.0919, "lighting": 6.9, "dark_spot": 0, "crowd": 1, "police_km": 1.4}
+  ]
+}

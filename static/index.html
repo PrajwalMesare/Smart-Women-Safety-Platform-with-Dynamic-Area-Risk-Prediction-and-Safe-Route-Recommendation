@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Smart Women Safety Platform — Demo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  body { font-family: system-ui, -apple-system, sans-serif; margin: 0; display: flex; height: 100vh; }
+  #sidebar { width: 340px; padding: 16px; box-sizing: border-box; overflow-y: auto; background: #fafafa; border-right: 1px solid #ddd; }
+  #map { flex: 1; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: #666; font-size: 12px; margin-bottom: 16px; }
+  label { display: block; font-size: 12px; font-weight: 600; margin: 12px 0 4px; }
+  select, input, button { width: 100%; padding: 8px; box-sizing: border-box; font-size: 14px; }
+  button { margin-top: 14px; background: #b4224a; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
+  button:hover { background: #9a1c3f; }
+  button:disabled { background: #ccc; cursor: not-allowed; }
+  .route-card { border: 1px solid #ddd; border-radius: 8px; padding: 10px; margin-top: 12px; background: white; }
+  .route-card h3 { margin: 0 0 6px; font-size: 14px; }
+  .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 10px; color: white; margin-bottom: 6px; }
+  .badge.recommended { background: #2e7d32; }
+  .badge.fastest { background: #1565c0; }
+  .badge.safest { background: #ef6c00; }
+  .metrics { font-size: 12px; color: #333; line-height: 1.5; }
+  .error { color: #b4224a; font-size: 13px; margin-top: 10px; }
+  #sos-btn { background: #d32f2f; margin-top: 24px; padding: 14px; font-size: 15px; }
+  #sos-btn:hover { background: #b71c1c; }
+  #sos-status { font-size: 12px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div id="sidebar">
+  <h1>Smart Women Safety Platform</h1>
+  <div class="sub">Route demo — talks directly to the Flask API</div>
+
+  <label for="origin">Origin</label>
+  <select id="origin"></select>
+
+  <label for="destination">Destination</label>
+  <select id="destination"></select>
+
+  <label for="hour">Departure hour (0-23)</label>
+  <input type="number" id="hour" min="0" max="23" value="21">
+
+  <button id="go-btn">Calculate routes</button>
+
+  <div id="results"></div>
+
+  <button id="sos-btn">Hold to test SOS</button>
+  <div id="sos-status"></div>
+</div>
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const API = ""; // same origin as this page
+
+const map = L.map('map').setView([21.1458, 79.0882], 12);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
+
+const colors = { recommended: '#2e7d32', fastest: '#1565c0', safest: '#ef6c00' };
+let routeLayers = [];
+let localityCoords = {};
+
+async function loadLocalities() {
+  const res = await fetch(`${API}/api/localities`);
+  const data = await res.json();
+  const originSel = document.getElementById('origin');
+  const destSel = document.getElementById('destination');
+  data.localities.forEach(loc => {
+    localityCoords[loc.name] = [loc.lat, loc.lon];
+    L.circleMarker([loc.lat, loc.lon], { radius: 4, color: '#888' })
+      .addTo(map)
+      .bindTooltip(loc.name);
+    [originSel, destSel].forEach(sel => {
+      const opt = document.createElement('option');
+      opt.value = loc.name;
+      opt.textContent = loc.name;
+      sel.appendChild(opt);
+    });
+  });
+  if (data.localities.length > 1) {
+    originSel.value = data.localities[5]?.name || data.localities[0].name;
+    destSel.value = data.localities[8]?.name || data.localities[1].name;
+  }
+}
+
+function clearRoutes() {
+  routeLayers.forEach(l => map.removeLayer(l));
+  routeLayers = [];
+}
+
+function drawRoute(route) {
+  const latlngs = route.path.map(name => localityCoords[name]).filter(Boolean);
+  if (latlngs.length < 2) return;
+  const line = L.polyline(latlngs, { color: colors[route.category] || '#999', weight: 5, opacity: 0.8 }).addTo(map);
+  routeLayers.push(line);
+  return line;
+}
+
+async function calculateRoutes() {
+  const origin = document.getElementById('origin').value;
+  const destination = document.getElementById('destination').value;
+  const hour = document.getElementById('hour').value;
+  const resultsEl = document.getElementById('results');
+  resultsEl.innerHTML = '<div class="sub">Loading...</div>';
+  clearRoutes();
+
+  const now = new Date();
+  now.setHours(parseInt(hour, 10), 0, 0, 0);
+
+  try {
+    const res = await fetch(`${API}/api/optimize_route`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ origin, destination, departure_time: now.toISOString() })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Request failed');
+
+    resultsEl.innerHTML = `<div class="sub">Graph mode: ${data.graph_mode}</div>`;
+    const bounds = [];
+    data.routes.forEach(route => {
+      const card = document.createElement('div');
+      card.className = 'route-card';
+      card.innerHTML = `
+        <span class="badge ${route.category}">${route.category}</span>
+        <div class="metrics">
+          ${route.total_time_min} min · ${route.total_distance_km} km<br>
+          Mean risk: ${route.mean_risk}/10 · Peak risk: ${route.peak_risk}/10<br>
+          Detour: ${route.detour_percent}% ${route.feasible ? '' : '(exceeds limit)'}<br>
+          <em>${route.explanation}</em>
+        </div>`;
+      resultsEl.appendChild(card);
+      const line = drawRoute(route);
+      if (line) bounds.push(...line.getLatLngs());
+    });
+    if (bounds.length) map.fitBounds(bounds, { padding: [30, 30] });
+  } catch (err) {
+    resultsEl.innerHTML = `<div class="error">${err.message}</div>`;
+  }
+}
+
+document.getElementById('go-btn').addEventListener('click', calculateRoutes);
+
+// SOS: press-and-hold ~2s, mirrors the paper's accidental-activation guard
+let sosTimer = null;
+const sosBtn = document.getElementById('sos-btn');
+const sosStatus = document.getElementById('sos-status');
+
+function startHold() {
+  sosStatus.textContent = 'Hold for 2 seconds...';
+  sosTimer = setTimeout(triggerSos, 2000);
+}
+function cancelHold() {
+  if (sosTimer) { clearTimeout(sosTimer); sosTimer = null; sosStatus.textContent = ''; }
+}
+async function triggerSos() {
+  sosStatus.textContent = 'Sending SOS...';
+  navigator.geolocation.getCurrentPosition(async (pos) => {
+    const { latitude, longitude } = pos.coords;
+    try {
+      const res = await fetch(`${API}/api/sos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lat: latitude, lng: longitude, timestamp: new Date().toISOString() })
+      });
+      const data = await res.json();
+      sosStatus.textContent = data.sos_record?.sms?.sent
+        ? `SOS sent via SMS (id ${data.sos_record.sos_id}).`
+        : `SOS acknowledged (id ${data.sos_record.sos_id}). SMS not configured — see README.`;
+    } catch (e) {
+      sosStatus.textContent = 'SOS request failed: ' + e.message;
+    }
+  }, () => {
+    sosStatus.textContent = 'Location permission denied — cannot send SOS.';
+  });
+}
+sosBtn.addEventListener('mousedown', startHold);
+sosBtn.addEventListener('touchstart', startHold);
+['mouseup', 'mouseleave', 'touchend'].forEach(evt => sosBtn.addEventListener(evt, cancelHold));
+
+loadLocalities();
+</script>
+</body>
+</html>

@@ -11,3 +11,4 @@ joblib
 osmnx
 twilio
 python-dotenv
+gunicorn

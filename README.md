@@ -99,6 +99,51 @@ This version fixes that at the root:
 - **A demoable frontend** (`static/index.html`) so the project can be shown
   working in a browser without a Flutter environment.
 
+## Deployment
+
+The Flask dev server (`python app.py`) is fine for local testing but isn't
+meant for production. For an actual deploy:
+
+```bash
+gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+```
+
+`Procfile` and `build.sh` are included for platforms that use them
+(Render, Railway, and similar). `build.sh` runs `pip install`,
+`graph_builder.py`, and `train_model.py` as one build step — if the
+platform's network can't reach OpenStreetMap, `graph_builder.py` still
+succeeds by falling back to the sparse locality graph automatically, so the
+build won't fail either way.
+
+### Render.com (free tier, simplest option)
+
+1. Push this repo to GitHub (already done).
+2. On [render.com](https://render.com) → **New** → **Web Service** → connect
+   this repo.
+3. Settings:
+   - **Build Command**: `bash build.sh`
+   - **Start Command**: `gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120`
+   - **Instance type**: Free is fine for a demo.
+4. If you want real SOS SMS, add `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`,
+   `TWILIO_FROM_NUMBER`, `EMERGENCY_CONTACT_NUMBER` under **Environment**
+   (never commit these to the repo — see `.env.example`).
+5. Deploy. Render gives you a public URL like
+   `https://your-app.onrender.com` — open it directly for the map demo, or
+   point a Flutter/other frontend at it instead of `10.0.2.2:5000`.
+
+Free-tier services on Render sleep after inactivity, so the first request
+after idling can take ~30s to wake up — expected, not a bug.
+
+### Alternatives
+
+- **Railway** — same `build.sh` / gunicorn start command pattern, usually
+  detects Python automatically.
+- **Fly.io** — needs a `Dockerfile` instead of `Procfile`/`build.sh` if you
+  go this route.
+- **PythonAnywhere** — good free option for Flask specifically, but it
+  proxies WSGI directly rather than using gunicorn/Procfile; follow their
+  "Manual configuration" Flask guide and point it at `app.py`'s `app` object.
+
 ## Known limitations / next steps
 
 - The per-locality environmental features in `data/localities.json` are

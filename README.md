@@ -1,0 +1,1 @@
+# Smart-Women-Safety-Platform-with-Dynamic-Area-Risk-Prediction-and-Safe-Route-Recommendation

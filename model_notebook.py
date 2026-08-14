@@ -13,7 +13,7 @@ cell1 = {
         "\n",
         "**ML Model & Risk Prediction**\n",
         "\n",
-        *italic("This notebook implements the transparent composite risk model from the research paper \"Development of a Smart Women Safety Platform with Dynamic Area Risk Prediction and Safe Route Recommendation\" and trains a data-driven ML model to predict area risk from environmental features matching the synthesized data summary provided.*")
+        "*This notebook implements the transparent composite risk model from the research paper \"Development of a Smart Women Safety Platform with Dynamic Area Risk Prediction and Safe Route Recommendation\" and trains a data-driven ML model to predict area risk from environmental features matching the synthesized data summary provided.*"
     ]
 }
 cells.append(cell1)
@@ -22,6 +22,7 @@ cells.append(cell1)
 cell2 = {
     "cell_type": "code",
     "execution_count": None,
+    "outputs": [],
     "metadata": {"tags": ["imports_data"]},
     "source": [
         "import numpy as np, pandas as pd, matplotlib.pyplot as plt, seaborn as sns\n",
@@ -97,6 +98,7 @@ cells.append(cell2)
 cell3 = {
     "cell_type": "code",
     "execution_count": None,
+    "outputs": [],
     "metadata": {"tags": ["paper_model"]},
     "source": [
         "# --- Transparent Composite Risk Model Implementing Eqs 5 & 6 ---\n",
@@ -131,7 +133,7 @@ cell3 = {
         "R_night = compute_temporal_risk(R_base, 22)\n",
         "print(f'Paper Example: Base={R_base:.2f}, At 22:00={R_night:.2f}')\n",
         "print(f'Bands: <3=Green, 3-6=Yellow, >=6=Red')\n",
-        f"print(f'Classification: {'' if R_night < 3 else 'Yellow' if R_night < 6 else 'Red'} (risk band)')"
+        "print(f'Classification: {'' if R_night < 3 else 'Yellow' if R_night < 6 else 'Red'} (risk band)')"
     ]
 }
 cells.append(cell3)
@@ -140,6 +142,7 @@ cells.append(cell3)
 cell4 = {
     "cell_type": "code",
     "execution_count": None,
+    "outputs": [],
     "metadata": {"tags": ["ml_training"]},
     "source": [
         "# --- Train Data-Driven ML Model ---\n",
@@ -153,7 +156,7 @@ cell4 = {
         "y_pred = rf.predict(X_test)\n",
         "mae = mean_absolute_error(y_test, y_pred)\n",
         "r2 = r2_score(y_test, y_pred)\n",
-        f"print(f'RandomForest Performance: MAE={mae:.2f}, R²={r2:.3f}')\n",
+        "print(f'RandomForest Performance: MAE={mae:.2f}, R²={r2:.3f}')\n",
         "\n",
         "# Feature Importances (should highlight Street Lighting as strongest negative correlate)\n",
         "importances = pd.Series(rf.feature_importances_, X.columns).sort_values(ascending=False)\n",
@@ -164,7 +167,7 @@ cell4 = {
         "sample = pd.DataFrame({'Street_Lighting': [7.0], 'Known_Dark_Spot': [0], 'Crowd_Density': [1], 'Police_Distance_km': [1.5], 'Time_Slot': [1]})\n",
         "pred = rf.predict(sample)[0]\n",
         "band = 'Green' if pred < 3 else 'Yellow' if pred < 6 else 'Red'\n",
-        f"print(f'\\nML Prediction for safe-profile locality: Risk Score={pred:.2f}, Band={band}')"
+        "print(f'\\nML Prediction for safe-profile locality: Risk Score={pred:.2f}, Band={band}')"
     ]
 }
 cells.append(cell4)
@@ -173,6 +176,7 @@ cells.append(cell4)
 cell5 = {
     "cell_type": "code",
     "execution_count": None,
+    "outputs": [],
     "metadata": {"tags": ["eval_explain"]},
     "source": [
         "# --- Risk Band Assignment (Paper Thresholds) ---\n",
@@ -193,15 +197,15 @@ cell5 = {
         "Cl, Ll, Hl = 0.52, 0.55, 0.40\n",
         "R_base = compute_base_risk(Cl, Ll, Hl)\n",
         "R_night = compute_temporal_risk(R_base, 22)\n",
-        f"print(f'Base risk: {R_base:.2f}, Night 22:00 risk: {R_night:.2f}')\n",
-        f"print(f'Risk band: {risk_band(R_night)}')\n",
+        "print(f'Base risk: {R_base:.2f}, Night 22:00 risk: {R_night:.2f}')\n",
+        "print(f'Risk band: {risk_band(R_night)}')\n",
         "\n",
         "print('\\n=== ML Model Prediction ===')\n",
         "sample_df = pd.DataFrame({'Street_Lighting': [5.5], 'Known_Dark_Spot': [1], 'Crowd_Density': [1], 'Police_Distance_km': [2.8], 'Time_Slot': [3]})\n",
         "pred = rf.predict(sample_df)[0]\n",
-        f"print(f'Predicted risk score: {pred:.2f}')\n",
-        f"print(f'Risk band: {risk_band(pred)}')\n",
-        f"print(f'Confidence: {confidence_label(30)}')  # assuming ~30 localities\n",
+        "print(f'Predicted risk score: {pred:.2f}')\n",
+        "print(f'Risk band: {risk_band(pred)}')\n",
+        "print(f'Confidence: {confidence_label(30)}')  # assuming ~30 localities\n",
         "\n",
         "# --- Eq 9-12: Route metrics demonstration ---\n",
         "print('\\n=== Route Exposure Formulas (Paper Sec 7.2-7.3) ===')\n",
@@ -218,7 +222,7 @@ cell5 = {
         "dists = [5.0, 3.2, 4.5]\n",
         "conf = [0.9, 0.7, 0.85]\n",
         "print(f'Mean exposure: {path_exposure(risks, dists):.2f}')\n",
-        f"print(f'Uncertainty: {path_uncertainty(risks, dists, conf):.2f}')"
+        "print(f'Uncertainty: {path_uncertainty(risks, dists, conf):.2f}')"
     ]
 }
 cells.append(cell5)
@@ -240,6 +244,8 @@ notebook = {
     "nbformat": 4,
     "nbformat_minor": 5
 }
+
+notebook = nbformat.from_dict(notebook)
 
 with open('Smart_Women_Safety_Model.ipynb', 'w', encoding='utf-8') as f:
     nbformat.write(notebook, f)

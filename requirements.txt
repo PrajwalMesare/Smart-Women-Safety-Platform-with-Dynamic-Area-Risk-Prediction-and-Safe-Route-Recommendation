@@ -1,0 +1,9 @@
+flask
+flask-cors
+networkx
+numpy
+pandas
+scikit-learn
+nbformat
+matplotlib
+seaborn

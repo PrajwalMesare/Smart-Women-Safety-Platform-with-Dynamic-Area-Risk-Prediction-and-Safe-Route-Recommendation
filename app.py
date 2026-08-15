@@ -189,6 +189,7 @@ G = nx.DiGraph()
 DIST_MATRIX = {}
 TIME_MATRIX = {}
 NODE_TO_LOCALITY = {}  # maps a raw graph node id -> nearest locality name (used for risk lookup)
+NODE_COORDS = {}  # maps a raw graph node id -> (lat, lon); only populated in real_road_network mode
 
 
 def _load_real_road_graph():
@@ -207,15 +208,17 @@ def _load_real_road_graph():
                 continue
         simple.add_edge(u, v, weight=time_min, distance_km=dist_km, time_min=time_min)
 
-    # Map each locality centroid to its nearest OSM node.
+    # Map each locality centroid to its nearest OSM node, and record every
+    # node's real coordinates so routes can be drawn following actual
+    # streets instead of straight lines between area centroids.
     node_points = {n: (d["y"], d["x"]) for n, d in graph.nodes(data=True)}
+    NODE_COORDS.update(node_points)
     for name, loc in LOCALITIES.items():
         nearest = ox.distance.nearest_nodes(graph, loc["lon"], loc["lat"])
         NODE_TO_LOCALITY[nearest] = name
 
     # Fill NODE_TO_LOCALITY for every node via nearest-centroid assignment so
     # every edge can be attributed a risk value.
-    import numpy as _np
     loc_items = list(LOCALITIES.items())
     for n, (lat, lon) in node_points.items():
         if n in NODE_TO_LOCALITY:
@@ -411,9 +414,21 @@ def compute_routes(origin, destination, dep_hour, alpha=0.35, beta=0.65, k=3):
 
         readable_path = [NODE_TO_LOCALITY.get(n, str(n)) for n in path] if GRAPH_MODE == "real_road_network" else path
 
+        if GRAPH_MODE == "real_road_network":
+            # Real street-by-street geometry (every OSM node the route passes
+            # through), not just the named-area waypoints — this is what lets
+            # the map draw the route actually following streets instead of
+            # straight lines between area centroids.
+            path_coords = [[NODE_COORDS[n][0], NODE_COORDS[n][1]] for n in path if n in NODE_COORDS]
+        else:
+            # No real street geometry available in this mode; use each
+            # area's centroid coordinates instead.
+            path_coords = [[LOCALITIES[n]["lat"], LOCALITIES[n]["lon"]] for n in path if n in LOCALITIES]
+
         results.append({
             "source": source,
             "path": readable_path,
+            "path_coords": path_coords,
             "total_time_min": round(total_time, 1),
             "total_distance_km": round(total_distance, 1),
             "mean_risk": mean_risk,

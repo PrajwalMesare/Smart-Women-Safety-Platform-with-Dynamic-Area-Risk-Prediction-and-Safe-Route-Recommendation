@@ -40,9 +40,12 @@ function initMap() {
   tileDark = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
     attribution: "&copy; OpenStreetMap &copy; CARTO",
     subdomains: "abcd",
+    maxZoom: 20,
   });
-  tileLight = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    attribution: "&copy; OpenStreetMap contributors",
+  tileLight = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+    attribution: "&copy; OpenStreetMap &copy; CARTO",
+    subdomains: "abcd",
+    maxZoom: 20,
   });
   currentTile = tileDark.addTo(map);
 }
@@ -199,10 +202,14 @@ function clearRoutes() {
 const ROUTE_COLORS = { recommended: "#34d399", fastest: "#60a5fa", safest: "#fbbf24" };
 
 function drawRoute(route) {
-  const latlngs = route.path.map((name) => {
-    const loc = areaData[name];
-    return loc ? [loc.lat, loc.lon] : null;
-  }).filter(Boolean);
+  let latlngs = route.path_coords;
+  if (!latlngs || latlngs.length < 2) {
+    // Fallback for older responses without path_coords: straight lines between area centroids.
+    latlngs = route.path.map((name) => {
+      const loc = areaData[name];
+      return loc ? [loc.lat, loc.lon] : null;
+    }).filter(Boolean);
+  }
   if (latlngs.length < 2) return null;
   const line = L.polyline(latlngs, {
     color: ROUTE_COLORS[route.category] || "#9aa5c4",
@@ -283,6 +290,16 @@ function setTheme(theme) {
   document.documentElement.setAttribute("data-theme", theme);
   document.getElementById("themeIcon").className = theme === "dark" ? "fa-solid fa-moon" : "fa-solid fa-sun";
   localStorage.setItem("saferoute-theme", theme);
+
+  // Keep the map tile style in sync with the UI theme.
+  if (map && tileDark && tileLight) {
+    const wanted = theme === "dark" ? tileDark : tileLight;
+    if (currentTile !== wanted) {
+      map.removeLayer(currentTile);
+      currentTile = wanted.addTo(map);
+      document.getElementById("layerToggleBtn")?.classList.toggle("active-layer", theme === "dark");
+    }
+  }
 }
 
 function updateClock() {

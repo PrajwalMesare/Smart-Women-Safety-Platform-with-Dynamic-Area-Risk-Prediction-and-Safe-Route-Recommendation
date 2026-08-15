@@ -49,6 +49,7 @@ LOCALITIES_PATH = os.path.join(DATA_DIR, "localities.json")
 GRAPHML_PATH = os.path.join(DATA_DIR, "nagpur_graph.graphml")
 FALLBACK_GRAPH_PATH = os.path.join(DATA_DIR, "locality_graph.json")
 MODEL_PATH = os.path.join(MODELS_DIR, "risk_model.joblib")
+REAL_CSV_PATH = os.path.join(BASE_DIR, "nagpur_women_safety_2025_RECREATED_1446.csv")
 
 app = Flask(__name__, static_folder=STATIC_DIR, static_url_path="/static")
 CORS(app)
@@ -497,13 +498,28 @@ def index():
 
 @app.route("/api/localities", methods=["GET"])
 def api_localities():
-    """List localities with coordinates, for populating the map/dropdowns."""
+    """List localities with coordinates and current risk, for populating the
+    map/dropdowns and color-coding areas by risk level."""
+    hour = request.args.get("hour", type=int)
+    if hour is None:
+        hour = datetime.utcnow().hour
+
+    localities = []
+    for name, loc in LOCALITIES.items():
+        risk = locality_risk(name, hour)
+        localities.append({
+            "name": name,
+            "lat": loc["lat"],
+            "lon": loc["lon"],
+            "risk_score_100": risk["risk_score_100"],
+            "risk_band": risk["risk_band"],
+            "confidence": risk["confidence"],
+        })
+
     return jsonify({
         "graph_mode": GRAPH_MODE,
-        "localities": [
-            {"name": name, "lat": loc["lat"], "lon": loc["lon"]}
-            for name, loc in LOCALITIES.items()
-        ],
+        "hour": hour,
+        "localities": localities,
     })
 
 
@@ -582,6 +598,63 @@ def api_sos():
         "message": "SOS activated. Coordinated response initiated.",
         "sos_record": sos_record,
         "instructions": "Share your location with trusted contacts. Emergency number 112 SMS fallback available.",
+    })
+
+
+@app.route("/api/analytics", methods=["GET"])
+def api_analytics():
+    """Aggregate stats from the real crime dataset, for the Analytics dashboard."""
+    if not os.path.exists(REAL_CSV_PATH):
+        return jsonify({"error": "Real dataset not found on server."}), 404
+
+    df = pd.read_csv(REAL_CSV_PATH)
+    total = len(df)
+    night_pct = round((df["Time_Slot"] == "Night").mean() * 100, 1)
+
+    area_group = df.groupby("Area").agg(
+        total=("Crime_ID", "count"),
+        avg_risk=("Risk_Score", "mean"),
+        avg_lighting=("Street_Lighting_Score", "mean"),
+        avg_police_km=("Nearby_Police_km", "mean"),
+    ).round(2)
+    # Most common Risk_Level per area (mode)
+    area_group["risk_level"] = df.groupby("Area")["Risk_Level"].agg(lambda s: s.mode().iloc[0])
+    area_group["safety_score"] = (100 - area_group["avg_risk"]).round(1)
+    area_group = area_group.sort_values("avg_risk", ascending=False)
+
+    high_risk_areas = int((area_group["risk_level"] == "High").sum())
+    safest_area = area_group["safety_score"].idxmax()
+
+    area_summary = [
+        {
+            "area": area,
+            "total": int(row["total"]),
+            "avg_risk": round(row["avg_risk"], 1),
+            "safety_score": row["safety_score"],
+            "avg_lighting": row["avg_lighting"],
+            "avg_police_km": row["avg_police_km"],
+            "risk_level": row["risk_level"],
+        }
+        for area, row in area_group.iterrows()
+    ]
+
+    crime_type_dist = df["Crime_Type"].value_counts().to_dict()
+    time_slot_dist = df["Time_Slot"].value_counts().reindex(
+        ["Morning", "Afternoon", "Evening", "Night"]).fillna(0).astype(int).to_dict()
+    crime_by_area = df["Area"].value_counts().head(15).to_dict()
+    safety_by_area = area_group["safety_score"].sort_values(ascending=False).head(15).to_dict()
+
+    return jsonify({
+        "total_records": total,
+        "high_risk_areas": high_risk_areas,
+        "night_crime_pct": night_pct,
+        "safest_area": safest_area,
+        "num_areas": int(df["Area"].nunique()),
+        "area_summary": area_summary,
+        "crime_type_distribution": crime_type_dist,
+        "time_slot_distribution": time_slot_dist,
+        "crime_count_by_area": crime_by_area,
+        "safety_score_by_area": safety_by_area,
     })
 
 

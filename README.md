@@ -7,16 +7,22 @@ Recommendation."
 
 ## What's here
 
-- `app.py` — Flask backend: risk prediction, route recommendation, SOS.
+- `app.py` — Flask backend: risk prediction, route recommendation, SOS, analytics.
 - `graph_builder.py` — builds the routing graph (real road network via OSMnx,
   or a sparse fallback graph if OSM isn't reachable).
-- `train_model.py` — generates synthetic training data and trains/saves the
-  RandomForest risk model.
-- `data/localities.json` — 18 Nagpur localities with distinct coordinates and
-  environmental features (lighting, dark-spot flag, crowd density, police
-  proximity).
-- `static/index.html` — a small Leaflet-based map demo that talks directly to
-  the Flask API, so you can see routes rendered without setting up Flutter.
+- `train_model.py` — trains/saves the RandomForest risk model. If
+  `nagpur_women_safety_2025_RECREATED_1446.csv` (the real crime dataset) is
+  present, trains on real data and regenerates `data/localities.json` from
+  real per-area averages (30 actual Nagpur areas); otherwise falls back to
+  a synthetic generator.
+- `nagpur_women_safety_2025_RECREATED_1446.csv` — the real dataset: 1,446
+  crime records across 30 Nagpur areas with coordinates, crime type, time
+  slot, lighting, crowd density, and police/hospital proximity.
+- `data/localities.json` — per-area features, regenerated from the real CSV.
+- `static/` — full frontend: risk-colored map (Map tab), a crime analytics
+  dashboard with charts (Analytics tab) built from the real CSV, and an
+  About tab. Live location tracking, an SOS bar with quick-dial numbers,
+  and dark/light theme are all wired to the real API — no Flutter needed.
 - `Smart_Women_Safety_Model.ipynb` — notebook version of the model/training
   walkthrough, already executed with outputs, for browsing on GitHub.
 
@@ -69,6 +75,7 @@ before — it just skips the real SMS send and says so in the response.
 | `/api/localities` | GET | List of localities with coordinates (for maps/dropdowns) |
 | `/api/predict_risk` | POST | Predict a risk score/band from `lighting`, `dark_spot`, `crowd`, `police_km`, `hour` |
 | `/api/optimize_route` | POST | Recommended/fastest/safest routes between `origin` and `destination` localities at a given `departure_time` |
+| `/api/analytics` | GET | Aggregated stats from the real crime dataset (totals, per-area breakdown, chart data) — powers the Analytics tab |
 | `/api/sos` | POST | Activate an SOS with `lat`/`lng`; sends a real SMS if Twilio is configured |
 
 ## What changed from the original prototype

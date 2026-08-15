@@ -58,6 +58,31 @@ the API directly (see below). Health check:
 curl http://127.0.0.1:5000/api/health
 ```
 
+### SOS: 3-second hold, nearest station, and why calling uses national numbers
+
+Pressing and holding the SOS button for 3 seconds:
+1. Captures your current GPS location (one-shot, doesn't require "Use My
+   Live Location" to already be active).
+2. Identifies the nearest police jurisdiction by name, using real per-area
+   data from `nagpur_women_safety_2025_RECREATED_1446.csv` (each area's
+   `Police_Station` value matches its own `Area` name in the real dataset).
+3. Sends an SMS with your location to your configured emergency contact,
+   if Twilio is set up (see below).
+4. Shows one-tap **Call Police (100)** / **Call Emergency (112)** buttons.
+
+Two deliberate choices worth knowing about:
+- **No direct-dial number is shown for the specific nearest station.** The
+  dataset identifies the correct *jurisdiction by name*, but doesn't
+  include independently verified phone numbers for all 30 stations, and a
+  wrong number in a real emergency is worse than none. Calling always uses
+  India's official, verified emergency lines (100 / 112 / 1091 / 108)
+  instead.
+- **No website can silently auto-dial a phone.** Browsers block that on
+  purpose (it's exactly how a malicious site would auto-dial a premium
+  number). The closest honest equivalent — and what's implemented here —
+  is: everything else happens automatically on hold, then a pre-filled
+  call button needs one tap to actually place the call.
+
 ### Optional: real SOS SMS via Twilio
 
 By default, `/api/sos` returns an acknowledgment JSON only. To actually send

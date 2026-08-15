@@ -279,9 +279,13 @@
 
   <!-- ===== SOS BAR ===== -->
   <div class="sos-bar" id="sosBar">
-    <button class="sos-btn" id="sosButton" onclick="triggerSOS()">
+    <button class="sos-btn" id="sosButton">
+      <svg class="sos-progress-ring" width="46" height="46" viewBox="0 0 46 46">
+        <circle class="sos-progress-track" cx="23" cy="23" r="20"></circle>
+        <circle class="sos-progress-fill" id="sosProgressFill" cx="23" cy="23" r="20"></circle>
+      </svg>
       <i class="fa-solid fa-bell"></i>
-      <span>SOS</span>
+      <span>Hold 3s for SOS</span>
     </button>
     <div class="sos-info">
       <i class="fa-solid fa-location-dot" style="color:#34d399"></i>
@@ -315,8 +319,12 @@
       <div class="sos-alert-icon"><i class="fa-solid fa-siren-on"></i></div>
       <h2>SOS Alert Sent!</h2>
       <p id="sosOverlayText">Emergency contacts notified with your location.</p>
+      <div class="sos-station-info" id="sosStationInfo"></div>
+      <div class="sos-call-buttons">
+        <a href="tel:100" class="sos-call-btn"><i class="fa-solid fa-phone"></i> Call Police (100)</a>
+        <a href="tel:112" class="sos-call-btn secondary"><i class="fa-solid fa-phone"></i> Call Emergency (112)</a>
+      </div>
       <div class="sos-contacts">
-        <div><i class="fa-solid fa-phone"></i> Police: <strong>100</strong></div>
         <div><i class="fa-solid fa-phone"></i> Women Helpline: <strong>1091</strong></div>
         <div><i class="fa-solid fa-phone"></i> Ambulance: <strong>108</strong></div>
       </div>

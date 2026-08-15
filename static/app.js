@@ -28,6 +28,7 @@ document.addEventListener("DOMContentLoaded", () => {
   loadLocalities();
   updateClock();
   setInterval(updateClock, 30000);
+  initSosHold();
 
   const saved = localStorage.getItem("saferoute-theme");
   if (saved === "light") setTheme("light");
@@ -307,31 +308,109 @@ function updateClock() {
   if (el) el.textContent = new Date().toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
 }
 
-// ---------- SOS ----------
+// ---------- SOS: 3-second press-and-hold ----------
+const HOLD_DURATION_MS = 3000;
+let holdTimer = null;
+let holdStartTime = null;
+
+function initSosHold() {
+  const btn = document.getElementById("sosButton");
+  const fill = document.getElementById("sosProgressFill");
+  if (!btn) return;
+
+  const start = (e) => {
+    e.preventDefault();
+    if (holdTimer) return;
+    holdStartTime = Date.now();
+    btn.classList.add("holding");
+    fill.style.transition = "none";
+    fill.style.strokeDashoffset = "125.6";
+    // Force reflow so the transition below actually animates from the reset state.
+    fill.getBoundingClientRect();
+    fill.style.transition = `stroke-dashoffset ${HOLD_DURATION_MS}ms linear`;
+    fill.style.strokeDashoffset = "0";
+
+    holdTimer = setTimeout(() => {
+      holdTimer = null;
+      btn.classList.remove("holding");
+      triggerSOS();
+    }, HOLD_DURATION_MS);
+  };
+
+  const cancel = () => {
+    if (!holdTimer) return;
+    clearTimeout(holdTimer);
+    holdTimer = null;
+    btn.classList.remove("holding");
+    fill.style.transition = "none";
+    fill.style.strokeDashoffset = "125.6";
+  };
+
+  btn.addEventListener("mousedown", start);
+  btn.addEventListener("touchstart", start, { passive: false });
+  ["mouseup", "mouseleave", "touchend", "touchcancel"].forEach((evt) => btn.addEventListener(evt, cancel));
+}
+
+function getCurrentLocationOnce() {
+  return new Promise((resolve) => {
+    if (userMarker) {
+      resolve(userMarker.getLatLng());
+      return;
+    }
+    if (!navigator.geolocation) {
+      resolve({ lat: 21.145, lng: 79.090 }); // Nagpur center fallback
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => resolve({ lat: 21.145, lng: 79.090 }),
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  });
+}
+
 async function triggerSOS() {
-  let lat = 21.145, lng = 79.090; // fallback: Nagpur center
-  if (userMarker) {
-    const ll = userMarker.getLatLng();
-    lat = ll.lat; lng = ll.lng;
-  }
+  const pos = await getCurrentLocationOnce();
+  const lat = pos.lat, lng = pos.lng;
+  updateUserMarker(lat, lng);
+  document.getElementById("liveCoords").textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+
+  const overlayText = document.getElementById("sosOverlayText");
+  const stationInfo = document.getElementById("sosStationInfo");
+  overlayText.textContent = "Sending…";
+  stationInfo.innerHTML = "";
+  document.getElementById("sosOverlay").classList.remove("hidden");
+
   try {
     const res = await fetch(`${API}/api/sos`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lat, lng, timestamp: new Date().toISOString() }),
+      body: JSON.stringify({
+        lat, lng,
+        timestamp: new Date().toISOString(),
+        message: "I need help. This is an automatic SOS alert.",
+      }),
     });
     const data = await res.json();
-    const overlayText = document.getElementById("sosOverlayText");
-    if (data.sos_record?.sms?.sent) {
-      overlayText.textContent = `Emergency contacts notified via SMS (id ${data.sos_record.sos_id}).`;
-    } else {
-      overlayText.textContent = `SOS acknowledged (id ${data.sos_record?.sos_id || "n/a"}). Real SMS isn't configured on this server — call the numbers below directly.`;
+    const rec = data.sos_record || {};
+
+    overlayText.textContent = rec.sms?.sent
+      ? `Your emergency contact was notified by SMS with your location (id ${rec.sos_id}).`
+      : `SOS logged (id ${rec.sos_id || "n/a"}). Real SMS isn't configured on this server, so tap a call button below to reach help directly.`;
+
+    const jurisdiction = rec.nearest_police_jurisdiction;
+    if (jurisdiction?.area_name) {
+      stationInfo.innerHTML = `
+        <i class="fa-solid fa-building-shield"></i>
+        Nearest police jurisdiction: <b>${jurisdiction.area_name}</b>
+        (~${jurisdiction.approx_distance_km} km away).
+        Direct-dial numbers per station aren't verified, so use the official numbers below.`;
     }
   } catch (e) {
-    document.getElementById("sosOverlayText").textContent = "Could not reach the server — call the numbers below directly.";
+    overlayText.textContent = "Could not reach the server — call the numbers below directly.";
   }
-  document.getElementById("sosOverlay").classList.remove("hidden");
 }
+
 function closeSOS() {
   document.getElementById("sosOverlay").classList.add("hidden");
 }

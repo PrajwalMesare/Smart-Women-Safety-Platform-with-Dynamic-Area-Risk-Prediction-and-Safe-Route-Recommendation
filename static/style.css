@@ -282,6 +282,17 @@ body {
 .sos-info-val { font-size: 13px; font-weight: 600; }
 .sos-link { color: var(--accent-2); text-decoration: none; }
 
+/* ===== SOS HOLD PROGRESS ===== */
+.sos-btn { position: relative; user-select: none; -webkit-user-select: none; touch-action: none; }
+.sos-progress-ring { position: absolute; left: 6px; top: 50%; transform: translateY(-50%) rotate(-90deg); pointer-events: none; opacity: 0; transition: opacity 0.15s; }
+.sos-btn.holding .sos-progress-ring { opacity: 1; }
+.sos-progress-track { fill: none; stroke: rgba(255,255,255,0.25); stroke-width: 3; }
+.sos-progress-fill {
+  fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round;
+  stroke-dasharray: 125.6; stroke-dashoffset: 125.6;
+}
+.sos-btn.holding .sos-progress-fill { transition: stroke-dashoffset linear; }
+
 /* ===== SOS OVERLAY ===== */
 .sos-overlay {
   position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 2000;
@@ -296,6 +307,20 @@ body {
 .sos-alert-icon { font-size: 40px; color: var(--danger); margin-bottom: 12px; }
 .sos-alert-box h2 { margin: 0 0 8px; }
 .sos-alert-box p { color: var(--text-dim); font-size: 13px; margin-bottom: 16px; }
+.sos-station-info {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; font-size: 12.5px; color: var(--text-dim); text-align: left;
+  margin-bottom: 16px;
+}
+.sos-station-info b { color: var(--text); }
+.sos-call-buttons { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+.sos-call-btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 12px; border-radius: 10px; text-decoration: none; font-weight: 700; font-size: 14px;
+  background: linear-gradient(135deg, var(--danger), #dc2626); color: white;
+}
+.sos-call-btn.secondary { background: var(--bg-card); color: var(--text); border: 1px solid var(--border); }
+.sos-call-btn:hover { filter: brightness(1.08); }
 .sos-contacts { text-align: left; font-size: 13px; display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
 .sos-close-btn {
   width: 100%; padding: 10px; border-radius: 10px; border: none;

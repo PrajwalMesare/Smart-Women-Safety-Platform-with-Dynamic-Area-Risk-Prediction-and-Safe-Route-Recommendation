@@ -470,8 +470,47 @@ def compute_routes(origin, destination, dep_hour, alpha=0.35, beta=0.65, k=3):
 # SOS: attempts a real Twilio SMS if configured via environment
 # variables; otherwise falls back to the original acknowledgment-only
 # behavior. Twilio credentials are never hardcoded.
+#
+# Nearest police station: identified by real jurisdiction name from the
+# dataset (each area's Police_Station value matches its own Area name 1:1
+# in the real CSV), found via nearest-centroid lookup against the
+# person's GPS coordinates. We deliberately do NOT show a direct-dial
+# number for that specific station: the dataset doesn't include verified
+# phone numbers, and a wrong number in a real emergency is worse than no
+# number. Calling always uses India's official, verified emergency lines
+# (100 / 112 / 1091) instead.
 # -----------------------------------------------------------
-def _send_sos_sms(lat, lng, timestamp):
+NATIONAL_EMERGENCY_NUMBERS = {
+    "police": "100",
+    "unified_emergency": "112",
+    "women_helpline": "1091",
+    "ambulance": "108",
+}
+
+
+def _haversine_km(lat1, lon1, lat2, lon2):
+    R = 6371.0
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlambda / 2) ** 2
+    return 2 * R * math.asin(math.sqrt(a))
+
+
+def _nearest_police_jurisdiction(lat, lng):
+    """Real jurisdiction name (= area name) nearest the given coordinates,
+    using actual area centroids from the dataset."""
+    if not LOCALITIES:
+        return None, None
+    best_name, best_dist = None, float("inf")
+    for name, loc in LOCALITIES.items():
+        d = _haversine_km(lat, lng, loc["lat"], loc["lon"])
+        if d < best_dist:
+            best_dist, best_name = d, name
+    return best_name, round(best_dist, 2)
+
+
+def _send_sos_sms(lat, lng, timestamp, station_name, message_note):
     account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
     auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
     from_number = os.environ.get("TWILIO_FROM_NUMBER")
@@ -485,10 +524,14 @@ def _send_sos_sms(lat, lng, timestamp):
 
     try:
         from twilio.rest import Client
-        from twilio.base.exceptions import TwilioRestException
 
         client = Client(account_sid, auth_token)
-        body = f"SOS ALERT at {timestamp}. Location: https://maps.google.com/?q={lat},{lng}"
+        body = (
+            f"SOS ALERT at {timestamp}. {message_note} "
+            f"Location: https://maps.google.com/?q={lat},{lng}. "
+            f"Nearest police jurisdiction: {station_name or 'unknown'}. "
+            f"If unreachable, call 100 (Police) or 112 (Emergency)."
+        )
         message = client.messages.create(body=body, from_=from_number, to=to_number)
         logger.info("Sent SOS SMS via Twilio, sid=%s", message.sid)
         return {"sent": True, "sid": message.sid}
@@ -588,6 +631,7 @@ def api_sos():
     lat = data.get("lat")
     lng = data.get("lng")
     timestamp = data.get("timestamp", datetime.utcnow().isoformat())
+    message_note = data.get("message", "I need help.")
 
     try:
         lat = float(lat)
@@ -597,7 +641,8 @@ def api_sos():
     except (TypeError, ValueError):
         return jsonify({"error": "Valid 'lat' and 'lng' are required"}), 400
 
-    sms_result = _send_sos_sms(lat, lng, timestamp)
+    station_name, station_km = _nearest_police_jurisdiction(lat, lng)
+    sms_result = _send_sos_sms(lat, lng, timestamp, station_name, message_note)
 
     sos_record = {
         "sos_id": f"SOS-{datetime.utcnow().timestamp():.0f}",
@@ -605,14 +650,22 @@ def api_sos():
         "timestamp": timestamp,
         "status": "activated",
         "sms": sms_result,
-        "fallback": "If data delivery fails, SMS to 112 will be prepared with coordinates",
+        "nearest_police_jurisdiction": {
+            "area_name": station_name,
+            "approx_distance_km": station_km,
+            "note": "Identified from real per-area jurisdiction data. Direct-dial numbers per "
+                    "station aren't independently verified, so calling always uses the official "
+                    "national emergency numbers below rather than a station-specific line.",
+        },
+        "emergency_numbers": NATIONAL_EMERGENCY_NUMBERS,
     }
-    logger.info("SOS activated: %s", sos_record["sos_id"])
+    logger.info("SOS activated: %s (nearest jurisdiction: %s)", sos_record["sos_id"], station_name)
 
     return jsonify({
         "message": "SOS activated. Coordinated response initiated.",
         "sos_record": sos_record,
-        "instructions": "Share your location with trusted contacts. Emergency number 112 SMS fallback available.",
+        "instructions": "Tap Call Police (100) or Emergency (112) below for immediate help. "
+                         "Your location has been shared with your emergency contact if configured.",
     })
 
 

@@ -313,6 +313,12 @@ body {
   margin-bottom: 16px;
 }
 .sos-station-info b { color: var(--text); }
+.sos-station-call {
+  display: inline-block; margin-top: 6px; color: var(--safe); font-weight: 700;
+  text-decoration: none;
+}
+.sos-station-call:hover { text-decoration: underline; }
+.sos-station-note { display: inline-block; margin-top: 6px; color: var(--text-dim); font-style: italic; }
 .sos-call-buttons { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
 .sos-call-btn {
   display: flex; align-items: center; justify-content: center; gap: 8px;

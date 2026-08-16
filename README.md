@@ -18,6 +18,10 @@ Recommendation."
 - `nagpur_women_safety_2025_RECREATED_1446.csv` — the real dataset: 1,446
   crime records across 30 Nagpur areas with coordinates, crime type, time
   slot, lighting, crowd density, and police/hospital proximity.
+- `data/nagpur_police_contacts.csv` — real Nagpur police station contact
+  numbers, used by the SOS feature to show a verified direct-dial number
+  for the nearest jurisdiction when one is available (see the SOS section
+  below for how partial/unverified entries are handled).
 - `data/localities.json` — per-area features, regenerated from the real CSV.
 - `static/` — full frontend: risk-colored map (Map tab), a crime analytics
   dashboard with charts (Analytics tab) built from the real CSV, and an
@@ -71,12 +75,15 @@ Pressing and holding the SOS button for 3 seconds:
 4. Shows one-tap **Call Police (100)** / **Call Emergency (112)** buttons.
 
 Two deliberate choices worth knowing about:
-- **No direct-dial number is shown for the specific nearest station.** The
-  dataset identifies the correct *jurisdiction by name*, but doesn't
-  include independently verified phone numbers for all 30 stations, and a
-  wrong number in a real emergency is worse than none. Calling always uses
-  India's official, verified emergency lines (100 / 112 / 1091 / 108)
-  instead.
+- **A verified direct-dial number is shown only for areas with one.**
+  `data/nagpur_police_contacts.csv` provides real station phone numbers for
+  some areas; entries marked `"Available"` in that file are placeholders,
+  not verified numbers, and are deliberately excluded. As of this writing,
+  11 of the 30 areas have a matched, verified number; the rest show no
+  station-specific number and fall back to the national lines below. If
+  you have verified numbers for more stations, add them to that CSV
+  (`Type` must be `Police Station`, `Contact Number` a real number) and
+  they'll be picked up automatically on the next server start.
 - **No website can silently auto-dial a phone.** Browsers block that on
   purpose (it's exactly how a malicious site would auto-dial a premium
   number). The closest honest equivalent — and what's implemented here —

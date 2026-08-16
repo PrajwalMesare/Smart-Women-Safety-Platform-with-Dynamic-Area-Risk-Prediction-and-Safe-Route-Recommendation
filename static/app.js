@@ -400,11 +400,14 @@ async function triggerSOS() {
 
     const jurisdiction = rec.nearest_police_jurisdiction;
     if (jurisdiction?.area_name) {
+      const phoneLine = jurisdiction.phone
+        ? `<a href="tel:${jurisdiction.phone}" class="sos-station-call">Call ${jurisdiction.area_name} Station: ${jurisdiction.phone}</a>`
+        : `<span class="sos-station-note">No verified direct line for this station — use the numbers below.</span>`;
       stationInfo.innerHTML = `
         <i class="fa-solid fa-building-shield"></i>
         Nearest police jurisdiction: <b>${jurisdiction.area_name}</b>
-        (~${jurisdiction.approx_distance_km} km away).
-        Direct-dial numbers per station aren't verified, so use the official numbers below.`;
+        (~${jurisdiction.approx_distance_km} km away).<br>
+        ${phoneLine}`;
     }
   } catch (e) {
     overlayText.textContent = "Could not reach the server — call the numbers below directly.";

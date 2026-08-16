@@ -487,6 +487,50 @@ NATIONAL_EMERGENCY_NUMBERS = {
     "ambulance": "108",
 }
 
+# Some station names in the contacts CSV don't exactly match the dataset's
+# area names (e.g. "Rana Pratap Nagar" vs area "Pratap Nagar"). Mapped by
+# hand since there are only a handful of mismatches.
+STATION_NAME_ALIASES = {
+    "Nandavan": "Nandanvan",
+    "Pachpaoli": "Panchpaoli",
+    "Rana Pratap Nagar": "Pratap Nagar",
+    "Lakadapul": "Lakadganj",
+    "Juni Kamptee": "Kamptee",
+}
+
+
+def _load_police_contacts():
+    """Map area name -> a verified real phone number, from the uploaded
+    contacts CSV. Entries whose Contact Number is literally 'Available'
+    (a placeholder, not a real verified number) are excluded on purpose -
+    showing an unverified/fake number in a safety feature is worse than
+    showing none."""
+    path = os.path.join(DATA_DIR, "nagpur_police_contacts.csv")
+    if not os.path.exists(path):
+        return {}
+    try:
+        df = pd.read_csv(path)
+    except Exception as e:
+        logger.warning("Could not read police contacts CSV: %s", e)
+        return {}
+
+    stations = df[df["Type"] == "Police Station"].copy()
+    stations = stations[stations["Contact Number"].astype(str).str.contains(r"\d{4,}")]
+
+    mapping = {}
+    for _, row in stations.iterrows():
+        raw_name = str(row["Police Station/Contact"]).replace("Police Station", "").strip()
+        canonical = STATION_NAME_ALIASES.get(raw_name, raw_name)
+        if canonical not in LOCALITIES:
+            continue
+        if canonical not in mapping:  # keep first (primary) number if an area has duplicates
+            mapping[canonical] = str(row["Contact Number"]).strip()
+    return mapping
+
+
+POLICE_CONTACTS = _load_police_contacts()
+logger.info("Loaded %d verified police station contact numbers.", len(POLICE_CONTACTS))
+
 
 def _haversine_km(lat1, lon1, lat2, lon2):
     R = 6371.0
@@ -510,7 +554,7 @@ def _nearest_police_jurisdiction(lat, lng):
     return best_name, round(best_dist, 2)
 
 
-def _send_sos_sms(lat, lng, timestamp, station_name, message_note):
+def _send_sos_sms(lat, lng, timestamp, station_name, station_phone, message_note):
     account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
     auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
     from_number = os.environ.get("TWILIO_FROM_NUMBER")
@@ -526,10 +570,12 @@ def _send_sos_sms(lat, lng, timestamp, station_name, message_note):
         from twilio.rest import Client
 
         client = Client(account_sid, auth_token)
+        station_line = f"{station_name} Police Station: {station_phone}." if station_phone else \
+            f"Nearest jurisdiction: {station_name or 'unknown'} (no verified direct line - call 100)."
         body = (
             f"SOS ALERT at {timestamp}. {message_note} "
             f"Location: https://maps.google.com/?q={lat},{lng}. "
-            f"Nearest police jurisdiction: {station_name or 'unknown'}. "
+            f"{station_line} "
             f"If unreachable, call 100 (Police) or 112 (Emergency)."
         )
         message = client.messages.create(body=body, from_=from_number, to=to_number)
@@ -642,7 +688,8 @@ def api_sos():
         return jsonify({"error": "Valid 'lat' and 'lng' are required"}), 400
 
     station_name, station_km = _nearest_police_jurisdiction(lat, lng)
-    sms_result = _send_sos_sms(lat, lng, timestamp, station_name, message_note)
+    station_phone = POLICE_CONTACTS.get(station_name)
+    sms_result = _send_sos_sms(lat, lng, timestamp, station_name, station_phone, message_note)
 
     sos_record = {
         "sos_id": f"SOS-{datetime.utcnow().timestamp():.0f}",
@@ -653,9 +700,13 @@ def api_sos():
         "nearest_police_jurisdiction": {
             "area_name": station_name,
             "approx_distance_km": station_km,
-            "note": "Identified from real per-area jurisdiction data. Direct-dial numbers per "
-                    "station aren't independently verified, so calling always uses the official "
-                    "national emergency numbers below rather than a station-specific line.",
+            "phone": station_phone,
+            "note": (
+                f"Verified contact number for {station_name} Police Station."
+                if station_phone else
+                "No independently verified direct-dial number for this station - "
+                "use the official national emergency numbers below instead."
+            ),
         },
         "emergency_numbers": NATIONAL_EMERGENCY_NUMBERS,
     }

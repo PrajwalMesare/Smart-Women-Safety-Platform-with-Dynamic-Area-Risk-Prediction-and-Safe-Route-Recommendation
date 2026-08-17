@@ -6,6 +6,7 @@ let tileDark, tileLight, currentTile;
 let areaMarkers = {};       // name -> L.circleMarker
 let areaData = {};          // name -> {lat, lon, risk_score_100, risk_band, confidence}
 let routeLayers = [];
+let liveOriginCoord = null; // [lat, lng] of the person's exact GPS point, when routing from live location
 let userMarker = null;
 let watchId = null;
 let riskOverlayOn = true;
@@ -231,6 +232,14 @@ function drawRoute(route) {
     }).filter(Boolean);
   }
   if (latlngs.length < 2) return null;
+
+  // If routing started from the person's live location, draw the true first
+  // leg from their exact GPS point to the route's first real waypoint,
+  // instead of starting the line at the nearest area's centroid.
+  if (liveOriginCoord) {
+    latlngs = [liveOriginCoord, ...latlngs];
+  }
+
   const line = L.polyline(latlngs, {
     color: ROUTE_COLORS[route.category] || "#9aa5c4",
     weight: 5,
@@ -253,6 +262,7 @@ async function findRoutes() {
 
   let origin = sourceSelValue;
   let liveOriginNote = "";
+  liveOriginCoord = null;
 
   if (sourceSelValue === "__live__") {
     cardsEl.innerHTML = '<div class="route-error" style="color:var(--text-dim)">Getting your location…</div>';
@@ -263,10 +273,12 @@ async function findRoutes() {
     }
     updateUserMarker(pos.lat, pos.lng);
     document.getElementById("liveCoords").textContent = `${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)}`;
+    liveOriginCoord = [pos.lat, pos.lng];
 
     const nearest = nearestAreaTo(pos.lat, pos.lng);
     if (!nearest.name) {
       cardsEl.innerHTML = '<div class="route-error">Could not match your location to a known area.</div>';
+      liveOriginCoord = null;
       return;
     }
     origin = nearest.name;

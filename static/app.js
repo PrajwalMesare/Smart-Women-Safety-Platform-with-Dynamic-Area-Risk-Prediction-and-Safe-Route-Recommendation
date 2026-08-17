@@ -22,6 +22,24 @@ function riskColor(band) {
   return "#9aa5c4";
 }
 
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
+function nearestAreaTo(lat, lon) {
+  let best = null, bestDist = Infinity;
+  for (const [name, loc] of Object.entries(areaData)) {
+    const d = haversineKm(lat, lon, loc.lat, loc.lon);
+    if (d < bestDist) { bestDist = d; best = name; }
+  }
+  return { name: best, distanceKm: bestDist };
+}
+
 // ---------- Init ----------
 document.addEventListener("DOMContentLoaded", () => {
   initMap();
@@ -62,7 +80,8 @@ async function loadLocalities(hour) {
   const firstLoad = Object.keys(areaData).length === 0;
 
   if (firstLoad) {
-    sourceSel.innerHTML = '<option value="">— Select Start Area —</option>';
+    sourceSel.innerHTML = '<option value="">— Select Start Area —</option>' +
+      '<option value="__live__">📍 Use My Current Location</option>';
     destSel.innerHTML = '<option value="">— Select Destination —</option>';
   }
 
@@ -222,7 +241,7 @@ function drawRoute(route) {
 }
 
 async function findRoutes() {
-  const origin = document.getElementById("sourceArea").value;
+  const sourceSelValue = document.getElementById("sourceArea").value;
   const destination = document.getElementById("destArea").value;
   const timeSlot = document.getElementById("timeSlot").value;
   const hour = TIME_SLOT_HOUR[timeSlot] ?? 19;
@@ -230,9 +249,31 @@ async function findRoutes() {
   const resultsEl = document.getElementById("routeResults");
   const cardsEl = document.getElementById("routeCards");
   resultsEl.classList.remove("hidden");
-  cardsEl.innerHTML = '<div class="route-error" style="color:var(--text-dim)">Calculating…</div>';
   clearRoutes();
 
+  let origin = sourceSelValue;
+  let liveOriginNote = "";
+
+  if (sourceSelValue === "__live__") {
+    cardsEl.innerHTML = '<div class="route-error" style="color:var(--text-dim)">Getting your location…</div>';
+    const pos = await getCurrentLocationOnce();
+    if (!pos.ok) {
+      cardsEl.innerHTML = '<div class="route-error">Could not get your location — check location permission and try again, or pick a start area manually.</div>';
+      return;
+    }
+    updateUserMarker(pos.lat, pos.lng);
+    document.getElementById("liveCoords").textContent = `${pos.lat.toFixed(4)}, ${pos.lng.toFixed(4)}`;
+
+    const nearest = nearestAreaTo(pos.lat, pos.lng);
+    if (!nearest.name) {
+      cardsEl.innerHTML = '<div class="route-error">Could not match your location to a known area.</div>';
+      return;
+    }
+    origin = nearest.name;
+    liveOriginNote = `<div class="route-live-note"><i class="fa-solid fa-location-crosshairs"></i> Using your location — nearest area: <b>${nearest.name}</b> (~${nearest.distanceKm.toFixed(2)} km away)</div>`;
+  }
+
+  cardsEl.innerHTML = '<div class="route-error" style="color:var(--text-dim)">Calculating…</div>';
   await loadLocalities(hour); // refresh risk colors for the selected time
 
   const now = new Date();
@@ -247,7 +288,7 @@ async function findRoutes() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || "Request failed");
 
-    cardsEl.innerHTML = "";
+    cardsEl.innerHTML = liveOriginNote;
     const bounds = [];
     data.routes.forEach((route) => {
       const card = document.createElement("div");
@@ -354,16 +395,17 @@ function initSosHold() {
 function getCurrentLocationOnce() {
   return new Promise((resolve) => {
     if (userMarker) {
-      resolve(userMarker.getLatLng());
+      const ll = userMarker.getLatLng();
+      resolve({ lat: ll.lat, lng: ll.lng, ok: true });
       return;
     }
     if (!navigator.geolocation) {
-      resolve({ lat: 21.145, lng: 79.090 }); // Nagpur center fallback
+      resolve({ lat: 21.145, lng: 79.090, ok: false }); // Nagpur center fallback
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => resolve({ lat: 21.145, lng: 79.090 }),
+      (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, ok: true }),
+      () => resolve({ lat: 21.145, lng: 79.090, ok: false }),
       { enableHighAccuracy: true, timeout: 8000 }
     );
   });

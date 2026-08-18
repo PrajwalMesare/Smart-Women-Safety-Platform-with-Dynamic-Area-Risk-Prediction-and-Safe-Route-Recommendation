@@ -312,10 +312,48 @@ def _resolve_node(locality_name):
     return locality_name
 
 
+def _blended_risk_at(lat, lon, dep_hour, risk_cache, top_n=5):
+    """Inverse-distance-weighted risk at an exact point, blending the
+    nearest few localities instead of hard-assigning to a single nearest
+    one. Without this, every point within a locality's whole nearest-
+    neighbor region shares one identical risk value, so a route has no
+    local incentive to curve away from a risky centroid - it only changes
+    once it crosses into a different locality's region, and runs straight
+    through the middle of whichever region it's currently in otherwise."""
+    dists = []
+    for name, loc in LOCALITIES.items():
+        d = _haversine_km(lat, lon, loc["lat"], loc["lon"])
+        dists.append((d, name))
+    dists.sort(key=lambda x: x[0])
+    nearest = dists[:top_n]
+
+    total_weight = 0.0
+    weighted_sum = 0.0
+    for d, name in nearest:
+        if name not in risk_cache:
+            risk_cache[name] = locality_risk(name, dep_hour)["risk_score_100"] / 10.0
+        w = 1.0 / (d ** 2 + 0.05)  # small epsilon avoids divide-by-zero at d=0
+        weighted_sum += w * risk_cache[name]
+        total_weight += w
+    return weighted_sum / total_weight if total_weight > 0 else 5.0
+
+
 def _edge_risk(u, v, dep_hour, risk_cache):
-    """Risk for a single graph edge, derived from the nearer locality's
-    distinct per-locality features (real per-segment risk instead of one
-    global value copy-pasted onto every edge, as in the original prototype)."""
+    """Risk for a single graph edge. In real_road_network mode, uses a
+    smooth distance-weighted blend at the edge's exact midpoint (see
+    _blended_risk_at) so routes can genuinely curve away from a risky
+    centroid. In sparse/legacy modes, nodes ARE the named localities
+    directly, so no sub-locality geography exists to blend - uses each
+    endpoint's own risk instead."""
+    if GRAPH_MODE == "real_road_network" and u in NODE_COORDS and v in NODE_COORDS:
+        edge_key = ("edge", u, v)
+        if edge_key not in risk_cache:
+            lat_u, lon_u = NODE_COORDS[u]
+            lat_v, lon_v = NODE_COORDS[v]
+            mid_lat, mid_lon = (lat_u + lat_v) / 2, (lon_u + lon_v) / 2
+            risk_cache[edge_key] = _blended_risk_at(mid_lat, mid_lon, dep_hour, risk_cache)
+        return risk_cache[edge_key]
+
     loc_u = NODE_TO_LOCALITY.get(u, u if u in LOCALITIES else None)
     loc_v = NODE_TO_LOCALITY.get(v, v if v in LOCALITIES else None)
     names = [n for n in (loc_u, loc_v) if n]

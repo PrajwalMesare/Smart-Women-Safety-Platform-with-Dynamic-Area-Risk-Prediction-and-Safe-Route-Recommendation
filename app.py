@@ -372,7 +372,7 @@ def _edge_risk(u, v, dep_hour, risk_cache):
 # of a single perturbed-weight hack, so candidate routes are genuinely
 # distinct rather than usually collapsing to the same path.
 # -----------------------------------------------------------
-def compute_routes(origin, destination, dep_hour, alpha=0.35, beta=0.65, k=3):
+def compute_routes(origin, destination, dep_hour, alpha=0.25, beta=0.75, k=5):
     o_node = _resolve_node(origin)
     d_node = _resolve_node(destination)
 
@@ -486,14 +486,19 @@ def compute_routes(origin, destination, dep_hour, alpha=0.35, beta=0.65, k=3):
     recommended = min(feasible_results, key=lambda r: r["risk_score_J"])
 
     final = []
-    used_ids = set()
+    shown_paths = []  # list of (category_label, path_tuple) already added
 
     def add(route, category, explanation):
-        rid = id(route)
-        if rid in used_ids:
-            return
-        used_ids.add(rid)
-        final.append({**route, "category": category, "explanation": explanation})
+        path_key = tuple(route["path"])
+        duplicate_of = next((label for label, p in shown_paths if p == path_key), None)
+        if duplicate_of:
+            explanation = (
+                f"Same route as '{duplicate_of}' — no meaningfully different, "
+                f"lower-exposure alternative was found among the candidate paths searched."
+            )
+        shown_paths.append((category, path_key))
+        final.append({**route, "category": category, "explanation": explanation,
+                       "duplicate_of": duplicate_of})
 
     add(recommended, "recommended",
         "Best balance of time and safety exposure, computed across multiple real candidate routes.")

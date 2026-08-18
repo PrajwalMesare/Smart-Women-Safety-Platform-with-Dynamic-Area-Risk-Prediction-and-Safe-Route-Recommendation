@@ -304,9 +304,10 @@ async function findRoutes() {
     const bounds = [];
     data.routes.forEach((route) => {
       const card = document.createElement("div");
-      card.className = "route-card";
+      card.className = "route-card" + (route.duplicate_of ? " route-card-duplicate" : "");
       card.innerHTML = `
         <span class="route-badge ${route.category}">${route.category}</span>
+        ${route.duplicate_of ? '<span class="route-dup-tag">same path</span>' : ""}
         <div class="route-metrics">
           <b>${route.total_time_min} min</b> · ${route.total_distance_km} km<br>
           Mean risk: <b>${route.mean_risk}</b>/10 · Peak risk: <b>${route.peak_risk}</b>/10<br>
@@ -314,8 +315,11 @@ async function findRoutes() {
         </div>
         <div class="route-explain">${route.explanation}</div>`;
       cardsEl.appendChild(card);
-      const line = drawRoute(route);
-      if (line) bounds.push(...line.getLatLngs());
+      // Skip drawing a second identical polyline on top of one already drawn.
+      if (!route.duplicate_of) {
+        const line = drawRoute(route);
+        if (line) bounds.push(...line.getLatLngs());
+      }
     });
     if (bounds.length) map.fitBounds(bounds, { padding: [40, 40] });
   } catch (err) {

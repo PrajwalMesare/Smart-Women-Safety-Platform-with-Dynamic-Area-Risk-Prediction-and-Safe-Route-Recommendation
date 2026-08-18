@@ -75,15 +75,20 @@ Pressing and holding the SOS button for 3 seconds:
 4. Shows one-tap **Call Police (100)** / **Call Emergency (112)** buttons.
 
 Two deliberate choices worth knowing about:
-- **A verified direct-dial number is shown only for areas with one.**
-  `data/nagpur_police_contacts.csv` provides real station phone numbers for
-  some areas; entries marked `"Available"` in that file are placeholders,
-  not verified numbers, and are deliberately excluded. As of this writing,
-  11 of the 30 areas have a matched, verified number; the rest show no
-  station-specific number and fall back to the national lines below. If
-  you have verified numbers for more stations, add them to that CSV
-  (`Type` must be `Police Station`, `Contact Number` a real number) and
-  they'll be picked up automatically on the next server start.
+- **A verified direct-dial number is shown when available; otherwise the
+  verified Nagpur Police HQ number is used as a fallback, never a
+  fabricated one.** `data/nagpur_police_contacts.csv` provides real
+  station-specific numbers for some areas; entries marked `"Available"`
+  in that file are placeholders, not verified numbers, and are
+  deliberately excluded. As of this writing, 13 of the 30 areas have a
+  matched, station-specific verified number; the remaining 17 fall back to
+  the Nagpur City Police headquarters line (0712-2560601, verified against
+  the official listing at nagpur.gov.in/police/) rather than showing no
+  number or a guessed one. The SOS response and UI clearly label which
+  case applies. If you have verified numbers for more specific stations,
+  add them to that CSV (`Type` must be `Police Station`, `Contact Number`
+  a real number) and they'll be picked up automatically on the next
+  server start.
 - **No website can silently auto-dial a phone.** Browsers block that on
   purpose (it's exactly how a malicious site would auto-dial a premium
   number). The closest honest equivalent — and what's implemented here —

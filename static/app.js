@@ -459,7 +459,9 @@ async function triggerSOS() {
     const jurisdiction = rec.nearest_police_jurisdiction;
     if (jurisdiction?.area_name) {
       const phoneLine = jurisdiction.phone
-        ? `<a href="tel:${jurisdiction.phone}" class="sos-station-call">Call ${jurisdiction.area_name} Station: ${jurisdiction.phone}</a>`
+        ? jurisdiction.is_hq_fallback
+          ? `<a href="tel:${jurisdiction.phone}" class="sos-station-call">Call Nagpur Police HQ: ${jurisdiction.phone}</a><br><span class="sos-station-note">(No verified direct line for ${jurisdiction.area_name} specifically)</span>`
+          : `<a href="tel:${jurisdiction.phone}" class="sos-station-call">Call ${jurisdiction.area_name} Station: ${jurisdiction.phone}</a>`
         : `<span class="sos-station-note">No verified direct line for this station — use the numbers below.</span>`;
       stationInfo.innerHTML = `
         <i class="fa-solid fa-building-shield"></i>

@@ -530,6 +530,13 @@ NATIONAL_EMERGENCY_NUMBERS = {
     "ambulance": "108",
 }
 
+# Verified from the official government listing at nagpur.gov.in/police/
+# ("Nagpur City Police, Behind Collector Office, West High Court Road,
+# Civil Lines, Phone: 0712 256 0601"). Used as a fallback for areas that
+# don't have their own specific verified station number, so there's still
+# a real, correct local(ish) number to try before the national lines.
+NAGPUR_POLICE_HQ_PHONE = "0712-2560601"
+
 # Some station names in the contacts CSV don't exactly match the dataset's
 # area names (e.g. "Rana Pratap Nagar" vs area "Pratap Nagar"). Mapped by
 # hand since there are only a handful of mismatches.
@@ -732,7 +739,9 @@ def api_sos():
 
     station_name, station_km = _nearest_police_jurisdiction(lat, lng)
     station_phone = POLICE_CONTACTS.get(station_name)
-    sms_result = _send_sos_sms(lat, lng, timestamp, station_name, station_phone, message_note)
+    is_hq_fallback = station_phone is None
+    phone_to_use = station_phone or NAGPUR_POLICE_HQ_PHONE
+    sms_result = _send_sos_sms(lat, lng, timestamp, station_name, phone_to_use, message_note)
 
     sos_record = {
         "sos_id": f"SOS-{datetime.utcnow().timestamp():.0f}",
@@ -743,12 +752,13 @@ def api_sos():
         "nearest_police_jurisdiction": {
             "area_name": station_name,
             "approx_distance_km": station_km,
-            "phone": station_phone,
+            "phone": phone_to_use,
+            "is_hq_fallback": is_hq_fallback,
             "note": (
                 f"Verified contact number for {station_name} Police Station."
                 if station_phone else
-                "No independently verified direct-dial number for this station - "
-                "use the official national emergency numbers below instead."
+                f"No verified direct number for {station_name} Police Station specifically - "
+                f"using the verified Nagpur City Police HQ number instead."
             ),
         },
         "emergency_numbers": NATIONAL_EMERGENCY_NUMBERS,

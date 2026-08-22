@@ -810,7 +810,9 @@ function getEmergencyContact() {
 function openEmergencyContactModal() {
   const contact = getEmergencyContact();
   document.getElementById("contactNameInput").value = contact?.name || "";
-  document.getElementById("contactPhoneInput").value = contact?.phone || "";
+  // Show just the 10-digit local number; the +91 prefix is fixed in the UI.
+  const localDigits = (contact?.phone || "").replace(/^\+91/, "");
+  document.getElementById("contactPhoneInput").value = localDigits;
   document.getElementById("contactModal").classList.remove("hidden");
 }
 function closeEmergencyContactModal() {
@@ -819,11 +821,17 @@ function closeEmergencyContactModal() {
 
 function saveEmergencyContact() {
   const name = document.getElementById("contactNameInput").value.trim();
-  const phone = document.getElementById("contactPhoneInput").value.trim();
-  if (!phone) {
-    alert("Enter a phone number to save a contact.");
+  let digits = document.getElementById("contactPhoneInput").value.trim().replace(/\D/g, "");
+  // Be forgiving if someone types the country code again out of habit
+  // (the +91 prefix is already fixed outside the input).
+  if (digits.length === 12 && digits.startsWith("91")) digits = digits.slice(2);
+  else if (digits.length === 11 && digits.startsWith("0")) digits = digits.slice(1);
+
+  if (digits.length !== 10) {
+    alert("Enter a valid 10-digit phone number (without the country code).");
     return;
   }
+  const phone = `+91${digits}`;
   localStorage.setItem(CONTACT_STORAGE_KEY, JSON.stringify({ name, phone }));
   updateEmergencyContactBtnState();
   closeEmergencyContactModal();

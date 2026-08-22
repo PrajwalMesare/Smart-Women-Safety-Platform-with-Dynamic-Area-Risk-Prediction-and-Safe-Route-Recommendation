@@ -762,10 +762,32 @@ function stopTripTracking() {
 
 async function checkInTrip() {
   if (!currentTrip) return;
+  const btn = document.querySelector(".trip-safe-btn");
+  btn?.classList.add("confirmed");
+
   try {
     await fetch(`${API}/api/trip/${currentTrip.trip_id}/checkin`, { method: "POST" });
   } catch (e) { /* best effort */ }
-  stopTripTracking();
+
+  showToast("✅ Done — you arrived safely!");
+  setTimeout(() => {
+    btn?.classList.remove("confirmed");
+    stopTripTracking();
+  }, 1400);
+}
+
+function showToast(message) {
+  let toast = document.getElementById("appToast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "appToast";
+    toast.className = "app-toast";
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.classList.add("show");
+  clearTimeout(toast._hideTimer);
+  toast._hideTimer = setTimeout(() => toast.classList.remove("show"), 2800);
 }
 
 function copyTripShareLink() {

@@ -28,6 +28,7 @@ import logging
 import math
 import os
 import threading
+import time
 import uuid
 from datetime import datetime
 from itertools import islice
@@ -664,7 +665,7 @@ def _start_tracking_link(lat, lng, origin_label="SOS", destination_label="", pat
         "destination": destination_label,
         "path_coords": path_coords or [],
         "created_at": now.isoformat(),
-        "deadline_ts": now.timestamp() + duration_min * 60,
+        "deadline_ts": time.time() + duration_min * 60,
         "duration_min": duration_min,
         "last_location": {"lat": lat, "lng": lng, "updated_at": now.isoformat()},
         "status": "active",
@@ -757,7 +758,7 @@ def api_trip_start():
     trip_id = uuid.uuid4().hex
     share_id = uuid.uuid4().hex[:10]
     now = datetime.utcnow()
-    deadline_ts = now.timestamp() + duration_min * 60
+    deadline_ts = time.time() + duration_min * 60
 
     trip = {
         "trip_id": trip_id,
@@ -970,7 +971,7 @@ def api_sos():
                                 to_number_override=contact_phone, contact_name=contact_name, tracking_url=tracking_url)
 
     sos_record = {
-        "sos_id": f"SOS-{datetime.utcnow().timestamp():.0f}",
+        "sos_id": f"SOS-{time.time():.0f}",
         "coordinates": {"lat": lat, "lng": lng},
         "timestamp": timestamp,
         "status": "activated",

@@ -239,8 +239,12 @@ body {
 .trip-start-btn, .trip-safe-btn {
   width: 100%; padding: 10px; border: none; border-radius: 8px; font-weight: 700; cursor: pointer;
   background: linear-gradient(135deg, var(--accent-2), var(--accent)); color: white;
+  transition: background 0.3s ease, transform 0.15s ease;
 }
-.trip-safe-btn { background: linear-gradient(135deg, var(--safe), #059669); }
+.trip-safe-btn.confirmed {
+  background: linear-gradient(135deg, var(--safe), #059669);
+  transform: scale(0.98);
+}
 .trip-active { border-color: var(--accent-2); }
 .trip-countdown {
   font-size: 28px; font-weight: 800; text-align: center; margin: 6px 0 10px;
@@ -257,6 +261,16 @@ body {
   background: var(--bg); color: var(--text); cursor: pointer;
 }
 .trip-share-hint { font-size: 10.5px; color: var(--text-dim); margin-top: 6px; }
+
+/* ===== TOAST NOTIFICATION ===== */
+.app-toast {
+  position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%) translateY(20px);
+  background: linear-gradient(135deg, var(--safe), #059669); color: white;
+  padding: 14px 24px; border-radius: 12px; font-weight: 700; font-size: 14px;
+  box-shadow: var(--shadow); opacity: 0; pointer-events: none; transition: all 0.3s ease;
+  z-index: 2000; white-space: nowrap;
+}
+.app-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
 .legend { margin-top: 20px; border-top: 1px solid var(--border); padding-top: 14px; }
 .legend-title { font-size: 11px; font-weight: 700; color: var(--text-dim); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.04em; }

@@ -122,6 +122,18 @@ Two things worth knowing about the current implementation:
   consumer trip-sharing features make, but worth knowing before treating
   the link as something to post publicly.
 
+### Emergency contact
+
+The shield icon in the top-right header opens a small form for a name and
+phone number, stored **only in that browser's localStorage** — never sent
+to the server unless you actually trigger SOS or a trip's auto-alert. When
+one is set, both SOS and the trip check-in timeout send the SMS (and, on
+SOS, provide a tap-to-call link) to this specific person instead of only
+the server's globally-configured `EMERGENCY_CONTACT_NUMBER`. Both SOS and
+trip auto-alerts also now include a live-tracking link in the message, not
+just a one-time map pin — this reuses the same trip-tracking mechanism
+described above.
+
 ### Optional: real SOS SMS via Twilio
 
 

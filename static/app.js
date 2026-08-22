@@ -50,6 +50,8 @@ document.addEventListener("DOMContentLoaded", () => {
   updateClock();
   setInterval(updateClock, 30000);
   initSosHold();
+  resumeTripIfActive();
+  updateEmergencyContactBtnState();
 
   const saved = localStorage.getItem("saferoute-theme");
   if (saved === "light") setTheme("light");
@@ -451,6 +453,8 @@ async function triggerSOS() {
   stationInfo.innerHTML = "";
   document.getElementById("sosOverlay").classList.remove("hidden");
 
+  const contact = getEmergencyContact();
+
   try {
     const res = await fetch(`${API}/api/sos`, {
       method: "POST",
@@ -459,14 +463,28 @@ async function triggerSOS() {
         lat, lng,
         timestamp: new Date().toISOString(),
         message: "I need help. This is an automatic SOS alert.",
+        contact_name: contact?.name || null,
+        contact_phone: contact?.phone || null,
       }),
     });
     const data = await res.json();
     const rec = data.sos_record || {};
 
-    overlayText.textContent = rec.sms?.sent
-      ? `Your emergency contact was notified by SMS with your location (id ${rec.sos_id}).`
-      : `SOS logged (id ${rec.sos_id || "n/a"}). Real SMS isn't configured on this server, so tap a call button below to reach help directly.`;
+    if (rec.sms?.sent) {
+      overlayText.textContent = contact?.phone
+        ? `${contact.name || "Your contact"} was notified by SMS with your location (id ${rec.sos_id}).`
+        : `Your emergency contact was notified by SMS with your location (id ${rec.sos_id}).`;
+    } else {
+      overlayText.textContent = `SOS logged (id ${rec.sos_id || "n/a"}). Real SMS isn't configured on this server, so tap a call button below to reach help directly.`;
+    }
+
+    let extraLines = "";
+    if (contact?.phone) {
+      extraLines += `<div class="area-info-row"><span>Emergency contact</span><a href="tel:${contact.phone}" class="sos-station-call">Call ${contact.name || contact.phone}</a></div>`;
+    }
+    if (rec.tracking_url) {
+      extraLines += `<div class="area-info-row"><span>Live tracking link</span><a href="${rec.tracking_url}" target="_blank" class="sos-station-call">Open</a></div>`;
+    }
 
     const jurisdiction = rec.nearest_police_jurisdiction;
     if (jurisdiction?.area_name) {
@@ -475,11 +493,10 @@ async function triggerSOS() {
           ? `<a href="tel:${jurisdiction.phone}" class="sos-station-call">Call Nagpur Police HQ: ${jurisdiction.phone}</a><br><span class="sos-station-note">(No verified direct line for ${jurisdiction.area_name} specifically)</span>`
           : `<a href="tel:${jurisdiction.phone}" class="sos-station-call">Call ${jurisdiction.area_name} Station: ${jurisdiction.phone}</a>`
         : `<span class="sos-station-note">No verified direct line for this station — use the numbers below.</span>`;
-      stationInfo.innerHTML = `
-        <i class="fa-solid fa-building-shield"></i>
-        Nearest police jurisdiction: <b>${jurisdiction.area_name}</b>
-        (~${jurisdiction.approx_distance_km} km away).<br>
-        ${phoneLine}`;
+      stationInfo.innerHTML = extraLines + `</br>` + `</br>` +
+        `<i class="fa-solid fa-building-shield"></i> Nearest police jurisdiction: <b>${jurisdiction.area_name}</b> (~${jurisdiction.approx_distance_km} km away).<br>${phoneLine}`;
+    } else {
+      stationInfo.innerHTML = extraLines;
     }
   } catch (e) {
     overlayText.textContent = "Could not reach the server — call the numbers below directly.";
@@ -585,6 +602,37 @@ function renderCharts(data) {
 }
 
 // ---------- Trip check-in ----------
+const TRIP_STORAGE_KEY = "saferoute-active-trip";
+
+function saveTripToStorage() {
+  if (!currentTrip) {
+    localStorage.removeItem(TRIP_STORAGE_KEY);
+    return;
+  }
+  localStorage.setItem(TRIP_STORAGE_KEY, JSON.stringify({
+    trip_id: currentTrip.trip_id,
+    share_id: currentTrip.share_id,
+    deadline_ts: currentTrip.deadline_ts,
+  }));
+}
+
+function resumeTripIfActive() {
+  const saved = localStorage.getItem(TRIP_STORAGE_KEY);
+  if (!saved) return;
+  try {
+    const parsed = JSON.parse(saved);
+    currentTrip = { trip_id: parsed.trip_id, share_id: parsed.share_id, deadline_ts: parsed.deadline_ts };
+    const shareUrl = `${window.location.origin}/track/${currentTrip.share_id}`;
+    document.getElementById("tripShareUrl").value = shareUrl;
+    document.getElementById("tripStartCard").classList.add("hidden");
+    document.getElementById("tripActiveCard").classList.remove("hidden");
+    startTripCountdown();
+    startTripLocationPush();
+  } catch (e) {
+    localStorage.removeItem(TRIP_STORAGE_KEY);
+  }
+}
+
 async function startTrip() {
   if (!lastRouteInfo) return;
   const duration = parseFloat(document.getElementById("tripDuration").value);
@@ -598,6 +646,7 @@ async function startTrip() {
   const lng = pos.ok ? pos.lng : (areaData[lastRouteInfo.origin]?.lon || 79.090);
 
   try {
+    const contact = getEmergencyContact();
     const res = await fetch(`${API}/api/trip/start`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -607,6 +656,8 @@ async function startTrip() {
         duration_min: duration,
         lat, lng,
         path_coords: lastRouteInfo.pathCoords,
+        contact_name: contact?.name || null,
+        contact_phone: contact?.phone || null,
       }),
     });
     const data = await res.json();
@@ -618,6 +669,7 @@ async function startTrip() {
     document.getElementById("tripActiveCard").classList.remove("hidden");
 
     currentTrip = { trip_id: data.trip_id, share_id: data.share_id, deadline_ts: data.deadline_ts };
+    saveTripToStorage();
     startTripCountdown();
     startTripLocationPush();
   } catch (err) {
@@ -628,6 +680,7 @@ async function startTrip() {
 function startTripCountdown() {
   const el = document.getElementById("tripCountdown");
   const sub = document.getElementById("tripCardSub");
+  let alertShown = false;
 
   const tick = () => {
     if (!currentTrip) return;
@@ -640,14 +693,15 @@ function startTripCountdown() {
     } else {
       el.textContent = "0:00";
       el.classList.add("overdue");
-      sub.textContent = "Time's up — an automatic alert has been sent with your last known location.";
+      sub.textContent = "Time's up — checking whether an alert has gone out…";
     }
   };
   tick();
   currentTrip.countdownTimer = setInterval(tick, 1000);
 
-  // Poll our own trip status (via the public share endpoint) so the UI
-  // reflects it if the server-side auto-alert has actually fired.
+  // Poll the trip's real status so the UI reflects it once the
+  // server-side auto-alert has actually fired - this is what actually
+  // confirms the alert went out, not just the local countdown hitting 0.
   currentTrip.pollTimer = setInterval(async () => {
     if (!currentTrip) return;
     try {
@@ -655,9 +709,30 @@ function startTripCountdown() {
       const data = await res.json();
       if (data.status === "auto_alerted") {
         sub.textContent = "Automatic alert sent — your last location and nearest station were shared.";
+        if (!alertShown) {
+          alertShown = true;
+          showTripAlertOverlay(data.nearest_police_jurisdiction);
+        }
+      } else if (data.status === "arrived_safe") {
+        // Checked in from another tab/device - stop tracking here too.
+        stopTripTracking();
       }
     } catch (e) { /* ignore transient poll errors */ }
   }, 5000);
+}
+
+function showTripAlertOverlay(jurisdiction) {
+  const info = document.getElementById("tripAlertStationInfo");
+  if (jurisdiction?.area_name) {
+    info.innerHTML = `<i class="fa-solid fa-building-shield"></i> Nearest jurisdiction: <b>${jurisdiction.area_name}</b>` +
+      (jurisdiction.phone ? `<br><a href="tel:${jurisdiction.phone}" class="sos-station-call">Call: ${jurisdiction.phone}</a>` : "");
+  } else {
+    info.innerHTML = "";
+  }
+  document.getElementById("tripAlertOverlay").classList.remove("hidden");
+}
+function closeTripAlertOverlay() {
+  document.getElementById("tripAlertOverlay").classList.add("hidden");
 }
 
 function startTripLocationPush() {
@@ -673,19 +748,24 @@ function startTripLocationPush() {
   }, 20000);
 }
 
+function stopTripTracking() {
+  if (currentTrip) {
+    clearInterval(currentTrip.countdownTimer);
+    clearInterval(currentTrip.pollTimer);
+    clearInterval(currentTrip.locationPushTimer);
+  }
+  currentTrip = null;
+  saveTripToStorage();
+  document.getElementById("tripActiveCard").classList.add("hidden");
+  document.getElementById("tripStartCard").classList.remove("hidden");
+}
+
 async function checkInTrip() {
   if (!currentTrip) return;
   try {
     await fetch(`${API}/api/trip/${currentTrip.trip_id}/checkin`, { method: "POST" });
   } catch (e) { /* best effort */ }
-
-  clearInterval(currentTrip.countdownTimer);
-  clearInterval(currentTrip.pollTimer);
-  clearInterval(currentTrip.locationPushTimer);
-  currentTrip = null;
-
-  document.getElementById("tripActiveCard").classList.add("hidden");
-  document.getElementById("tripStartCard").classList.remove("hidden");
+  stopTripTracking();
 }
 
 function copyTripShareLink() {
@@ -694,4 +774,51 @@ function copyTripShareLink() {
   navigator.clipboard?.writeText(input.value).catch(() => {
     document.execCommand("copy");
   });
+}
+
+// ---------- Emergency contact (stored client-side only) ----------
+const CONTACT_STORAGE_KEY = "saferoute-emergency-contact";
+
+function getEmergencyContact() {
+  const raw = localStorage.getItem(CONTACT_STORAGE_KEY);
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch (e) { return null; }
+}
+
+function openEmergencyContactModal() {
+  const contact = getEmergencyContact();
+  document.getElementById("contactNameInput").value = contact?.name || "";
+  document.getElementById("contactPhoneInput").value = contact?.phone || "";
+  document.getElementById("contactModal").classList.remove("hidden");
+}
+function closeEmergencyContactModal() {
+  document.getElementById("contactModal").classList.add("hidden");
+}
+
+function saveEmergencyContact() {
+  const name = document.getElementById("contactNameInput").value.trim();
+  const phone = document.getElementById("contactPhoneInput").value.trim();
+  if (!phone) {
+    alert("Enter a phone number to save a contact.");
+    return;
+  }
+  localStorage.setItem(CONTACT_STORAGE_KEY, JSON.stringify({ name, phone }));
+  updateEmergencyContactBtnState();
+  closeEmergencyContactModal();
+}
+
+function clearEmergencyContact() {
+  localStorage.removeItem(CONTACT_STORAGE_KEY);
+  document.getElementById("contactNameInput").value = "";
+  document.getElementById("contactPhoneInput").value = "";
+  updateEmergencyContactBtnState();
+}
+
+function updateEmergencyContactBtnState() {
+  const btn = document.getElementById("emergencyContactBtn");
+  const contact = getEmergencyContact();
+  if (btn) {
+    btn.classList.toggle("contact-set", !!contact?.phone);
+    btn.title = contact?.phone ? `Emergency contact: ${contact.name || contact.phone}` : "Emergency Contact (not set)";
+  }
 }

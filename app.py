@@ -606,15 +606,17 @@ def _nearest_police_jurisdiction(lat, lng):
     return best_name, round(best_dist, 2)
 
 
-def _send_sos_sms(lat, lng, timestamp, station_name, station_phone, message_note):
+def _send_sos_sms(lat, lng, timestamp, station_name, station_phone, message_note,
+                   to_number_override=None, contact_name=None, tracking_url=None):
     account_sid = os.environ.get("TWILIO_ACCOUNT_SID")
     auth_token = os.environ.get("TWILIO_AUTH_TOKEN")
     from_number = os.environ.get("TWILIO_FROM_NUMBER")
-    to_number = os.environ.get("EMERGENCY_CONTACT_NUMBER")
+    to_number = to_number_override or os.environ.get("EMERGENCY_CONTACT_NUMBER")
 
     if not all([account_sid, auth_token, from_number, to_number]):
-        logger.info("Twilio not configured (set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, "
-                     "TWILIO_FROM_NUMBER, EMERGENCY_CONTACT_NUMBER env vars to enable real SMS). "
+        logger.info("Twilio not configured or no contact number available (set TWILIO_ACCOUNT_SID, "
+                     "TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER env vars, and either EMERGENCY_CONTACT_NUMBER "
+                     "or a per-request contact_phone, to enable real SMS). "
                      "Falling back to acknowledgment-only SOS response.")
         return {"sent": False, "reason": "twilio_not_configured"}
 
@@ -624,9 +626,11 @@ def _send_sos_sms(lat, lng, timestamp, station_name, station_phone, message_note
         client = Client(account_sid, auth_token)
         station_line = f"{station_name} Police Station: {station_phone}." if station_phone else \
             f"Nearest jurisdiction: {station_name or 'unknown'} (no verified direct line - call 100)."
+        greeting = f"Hi {contact_name}, this is an automatic safety alert. " if contact_name else ""
+        tracking_line = f" Live location: {tracking_url}." if tracking_url else ""
         body = (
-            f"SOS ALERT at {timestamp}. {message_note} "
-            f"Location: https://maps.google.com/?q={lat},{lng}. "
+            f"{greeting}SOS ALERT at {timestamp}. {message_note} "
+            f"Location: https://maps.google.com/?q={lat},{lng}.{tracking_line} "
             f"{station_line} "
             f"If unreachable, call 100 (Police) or 112 (Emergency)."
         )
@@ -642,6 +646,33 @@ def _send_sos_sms(lat, lng, timestamp, station_name, station_phone, message_note
         # provider never breaks the emergency acknowledgment path itself.
         logger.error("Twilio SMS send failed (%s): %s", type(e).__name__, e)
         return {"sent": False, "reason": f"twilio_error: {e}"}
+
+
+def _start_tracking_link(lat, lng, origin_label="SOS", destination_label="", path_coords=None, duration_min=360):
+    """Creates a trip-like entry purely so an SOS alert can include a live
+    tracking link, reusing the same in-memory trip store and /track page.
+    Long default duration (6h) since SOS doesn't have a natural 'expected
+    arrival' - the auto-alert-on-timeout behavior still applies as a
+    harmless bonus if it's never explicitly ended."""
+    trip_id = uuid.uuid4().hex
+    share_id = uuid.uuid4().hex[:10]
+    now = datetime.utcnow()
+    trip = {
+        "trip_id": trip_id,
+        "share_id": share_id,
+        "origin": origin_label,
+        "destination": destination_label,
+        "path_coords": path_coords or [],
+        "created_at": now.isoformat(),
+        "deadline_ts": now.timestamp() + duration_min * 60,
+        "duration_min": duration_min,
+        "last_location": {"lat": lat, "lng": lng, "updated_at": now.isoformat()},
+        "status": "active",
+        "sms": None,
+    }
+    with TRIPS_LOCK:
+        ACTIVE_TRIPS[trip_id] = trip
+    return trip_id, share_id
 
 
 # -----------------------------------------------------------
@@ -676,6 +707,10 @@ def _trip_timeout_handler(trip_id):
         lng = trip["last_location"]["lng"]
         origin = trip["origin"]
         destination = trip["destination"]
+        contact_phone = trip.get("contact_phone")
+        contact_name = trip.get("contact_name")
+        share_id = trip["share_id"]
+        base_url = trip.get("base_url")
 
     station_name, station_km = _nearest_police_jurisdiction(lat, lng)
     station_phone = POLICE_CONTACTS.get(station_name)
@@ -684,7 +719,9 @@ def _trip_timeout_handler(trip_id):
         f"Check-in overdue for a trip from {origin} to {destination} - "
         f"expected arrival time passed without confirmation."
     )
-    sms_result = _send_sos_sms(lat, lng, datetime.utcnow().isoformat(), station_name, phone_to_use, message_note)
+    tracking_url = f"{base_url}/track/{share_id}" if base_url else None
+    sms_result = _send_sos_sms(lat, lng, datetime.utcnow().isoformat(), station_name, phone_to_use, message_note,
+                                to_number_override=contact_phone, contact_name=contact_name, tracking_url=tracking_url)
 
     with TRIPS_LOCK:
         trip["sms"] = sms_result
@@ -700,6 +737,9 @@ def api_trip_start():
     origin = str(data.get("origin", ""))[:100]
     destination = str(data.get("destination", ""))[:100]
     path_coords = data.get("path_coords", [])
+    contact_name = data.get("contact_name")
+    contact_phone = data.get("contact_phone")
+    base_url = request.host_url.rstrip("/")
 
     try:
         duration_min = float(data.get("duration_min"))
@@ -731,6 +771,9 @@ def api_trip_start():
         "last_location": {"lat": lat, "lng": lng, "updated_at": now.isoformat()},
         "status": "active",
         "sms": None,
+        "contact_name": contact_name,
+        "contact_phone": contact_phone,
+        "base_url": base_url,
     }
 
     with TRIPS_LOCK:
@@ -900,6 +943,8 @@ def api_sos():
     lng = data.get("lng")
     timestamp = data.get("timestamp", datetime.utcnow().isoformat())
     message_note = data.get("message", "I need help.")
+    contact_name = data.get("contact_name")
+    contact_phone = data.get("contact_phone")
 
     try:
         lat = float(lat)
@@ -913,7 +958,16 @@ def api_sos():
     station_phone = POLICE_CONTACTS.get(station_name)
     is_hq_fallback = station_phone is None
     phone_to_use = station_phone or NAGPUR_POLICE_HQ_PHONE
-    sms_result = _send_sos_sms(lat, lng, timestamp, station_name, phone_to_use, message_note)
+
+    # SOS doesn't have a natural route to attach to, but still generates a
+    # live-tracking link (reusing the trip infrastructure) so the SMS and
+    # response can include somewhere the contact can watch location update
+    # in real time, not just a one-time static map pin.
+    _, share_id = _start_tracking_link(lat, lng, origin_label="SOS", destination_label="")
+    tracking_url = f"{request.host_url.rstrip('/')}/track/{share_id}"
+
+    sms_result = _send_sos_sms(lat, lng, timestamp, station_name, phone_to_use, message_note,
+                                to_number_override=contact_phone, contact_name=contact_name, tracking_url=tracking_url)
 
     sos_record = {
         "sos_id": f"SOS-{datetime.utcnow().timestamp():.0f}",
@@ -921,6 +975,7 @@ def api_sos():
         "timestamp": timestamp,
         "status": "activated",
         "sms": sms_result,
+        "tracking_url": tracking_url,
         "nearest_police_jurisdiction": {
             "area_name": station_name,
             "approx_distance_km": station_km,

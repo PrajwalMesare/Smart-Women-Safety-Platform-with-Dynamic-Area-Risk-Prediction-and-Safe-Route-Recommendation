@@ -38,6 +38,9 @@
       </button>
     </nav>
     <div class="header-right">
+      <button class="theme-toggle" id="emergencyContactBtn" onclick="openEmergencyContactModal()" title="Emergency Contact">
+        <i class="fa-solid fa-user-shield"></i>
+      </button>
       <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle Theme">
         <i class="fa-solid fa-moon" id="themeIcon"></i>
       </button>
@@ -349,6 +352,38 @@
         <div><i class="fa-solid fa-phone"></i> Ambulance: <strong>108</strong></div>
       </div>
       <button onclick="closeSOS()" class="sos-close-btn">Dismiss</button>
+    </div>
+  </div>
+
+  <div class="sos-overlay hidden" id="tripAlertOverlay">
+    <div class="sos-alert-box">
+      <div class="sos-alert-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+      <h2>Trip Check-In Missed</h2>
+      <p>You didn't check in before your deadline, so an alert was sent automatically using your last known location.</p>
+      <div class="sos-station-info" id="tripAlertStationInfo"></div>
+      <div class="sos-call-buttons">
+        <a href="tel:100" class="sos-call-btn"><i class="fa-solid fa-phone"></i> Call Police (100)</a>
+        <a href="tel:112" class="sos-call-btn secondary"><i class="fa-solid fa-phone"></i> Call Emergency (112)</a>
+      </div>
+      <button onclick="closeTripAlertOverlay()" class="sos-close-btn">Dismiss</button>
+    </div>
+  </div>
+
+  <div class="sos-overlay hidden" id="contactModal">
+    <div class="sos-alert-box">
+      <div class="sos-alert-icon" style="background:linear-gradient(135deg,#a78bfa,#818cf8)"><i class="fa-solid fa-user-shield"></i></div>
+      <h2>Emergency Contact</h2>
+      <p>If SOS or a missed trip check-in triggers, this person is called and texted directly with your location and a live tracking link, instead of only the emergency contact configured on the server.</p>
+      <label class="trip-label" style="text-align:left;display:block;margin-top:10px;">Name</label>
+      <input type="text" id="contactNameInput" placeholder="e.g. Mom" style="width:100%;padding:9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text);margin-bottom:10px;">
+      <label class="trip-label" style="text-align:left;display:block;">Phone (with country code)</label>
+      <input type="tel" id="contactPhoneInput" placeholder="e.g. +919876543210" style="width:100%;padding:9px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text);margin-bottom:14px;">
+      <div class="sos-call-buttons">
+        <button onclick="saveEmergencyContact()" class="sos-call-btn"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+        <button onclick="clearEmergencyContact()" class="sos-call-btn secondary"><i class="fa-solid fa-trash"></i> Clear</button>
+      </div>
+      <p class="trip-card-sub" style="margin-top:10px;">Stored only in this browser (not on the server) unless an SOS or trip alert is triggered.</p>
+      <button onclick="closeEmergencyContactModal()" class="sos-close-btn">Close</button>
     </div>
   </div>
 

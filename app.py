@@ -27,6 +27,8 @@ import json
 import logging
 import math
 import os
+import threading
+import uuid
 from datetime import datetime
 from itertools import islice
 
@@ -643,11 +645,181 @@ def _send_sos_sms(lat, lng, timestamp, station_name, station_phone, message_note
 
 
 # -----------------------------------------------------------
+# Trip check-in: start a timer before a trip; if the person doesn't check
+# in as arrived before the deadline, an alert automatically fires using
+# the same SOS SMS pipeline (last known location + nearest jurisdiction).
+# Also generates a shareable read-only link a trusted contact can open to
+# watch the trip's live location without needing the app themselves.
+#
+# Storage is a simple in-memory dict, not a database - fine for a single-
+# process demo (the Procfile already runs gunicorn with --workers 1 for
+# this reason), but trips are lost on server restart and this would need
+# a real datastore (Redis, a DB) to survive restarts or scale to multiple
+# worker processes.
+# -----------------------------------------------------------
+ACTIVE_TRIPS = {}
+TRIP_TIMERS = {}
+TRIPS_LOCK = threading.Lock()
+MAX_TRIP_DURATION_MIN = 6 * 60  # 6 hours, sanity cap
+
+
+def _trip_timeout_handler(trip_id):
+    """Fires automatically when a trip's check-in deadline passes without
+    the person confirming they arrived safely."""
+    with TRIPS_LOCK:
+        trip = ACTIVE_TRIPS.get(trip_id)
+        if not trip or trip["status"] != "active":
+            return
+        trip["status"] = "auto_alerted"
+        trip["alerted_at"] = datetime.utcnow().isoformat()
+        lat = trip["last_location"]["lat"]
+        lng = trip["last_location"]["lng"]
+        origin = trip["origin"]
+        destination = trip["destination"]
+
+    station_name, station_km = _nearest_police_jurisdiction(lat, lng)
+    station_phone = POLICE_CONTACTS.get(station_name)
+    phone_to_use = station_phone or NAGPUR_POLICE_HQ_PHONE
+    message_note = (
+        f"Check-in overdue for a trip from {origin} to {destination} - "
+        f"expected arrival time passed without confirmation."
+    )
+    sms_result = _send_sos_sms(lat, lng, datetime.utcnow().isoformat(), station_name, phone_to_use, message_note)
+
+    with TRIPS_LOCK:
+        trip["sms"] = sms_result
+        trip["nearest_police_jurisdiction"] = {
+            "area_name": station_name, "approx_distance_km": station_km, "phone": phone_to_use,
+        }
+    logger.warning("Trip %s timed out without check-in (%s -> %s); auto-alert sent.", trip_id, origin, destination)
+
+
+@app.route("/api/trip/start", methods=["POST"])
+def api_trip_start():
+    data = request.get_json(silent=True) or {}
+    origin = str(data.get("origin", ""))[:100]
+    destination = str(data.get("destination", ""))[:100]
+    path_coords = data.get("path_coords", [])
+
+    try:
+        duration_min = float(data.get("duration_min"))
+        if not (0 < duration_min <= MAX_TRIP_DURATION_MIN):
+            raise ValueError
+    except (TypeError, ValueError):
+        return jsonify({"error": f"duration_min must be a positive number of minutes, up to {MAX_TRIP_DURATION_MIN}."}), 400
+
+    try:
+        lat = float(data.get("lat"))
+        lng = float(data.get("lng"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Valid lat/lng are required to start a trip."}), 400
+
+    trip_id = uuid.uuid4().hex
+    share_id = uuid.uuid4().hex[:10]
+    now = datetime.utcnow()
+    deadline_ts = now.timestamp() + duration_min * 60
+
+    trip = {
+        "trip_id": trip_id,
+        "share_id": share_id,
+        "origin": origin,
+        "destination": destination,
+        "path_coords": path_coords if isinstance(path_coords, list) else [],
+        "created_at": now.isoformat(),
+        "deadline_ts": deadline_ts,
+        "duration_min": duration_min,
+        "last_location": {"lat": lat, "lng": lng, "updated_at": now.isoformat()},
+        "status": "active",
+        "sms": None,
+    }
+
+    with TRIPS_LOCK:
+        ACTIVE_TRIPS[trip_id] = trip
+        timer = threading.Timer(duration_min * 60, _trip_timeout_handler, args=[trip_id])
+        timer.daemon = True
+        timer.start()
+        TRIP_TIMERS[trip_id] = timer
+
+    logger.info("Trip started: %s (%s -> %s, %.1f min)", trip_id, origin, destination, duration_min)
+    return jsonify({
+        "trip_id": trip_id,
+        "share_id": share_id,
+        "share_path": f"/track/{share_id}",
+        "deadline_ts": deadline_ts,
+    })
+
+
+@app.route("/api/trip/<trip_id>/checkin", methods=["POST"])
+def api_trip_checkin(trip_id):
+    with TRIPS_LOCK:
+        trip = ACTIVE_TRIPS.get(trip_id)
+        if not trip:
+            return jsonify({"error": "Trip not found."}), 404
+        if trip["status"] == "active":
+            trip["status"] = "arrived_safe"
+            trip["resolved_at"] = datetime.utcnow().isoformat()
+        status = trip["status"]
+        timer = TRIP_TIMERS.pop(trip_id, None)
+
+    if timer:
+        timer.cancel()
+
+    return jsonify({"message": "Checked in - glad you made it safely!", "status": status})
+
+
+@app.route("/api/trip/<trip_id>/location", methods=["POST"])
+def api_trip_location(trip_id):
+    data = request.get_json(silent=True) or {}
+    try:
+        lat = float(data.get("lat"))
+        lng = float(data.get("lng"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Valid lat/lng are required."}), 400
+
+    with TRIPS_LOCK:
+        trip = ACTIVE_TRIPS.get(trip_id)
+        if not trip:
+            return jsonify({"error": "Trip not found."}), 404
+        trip["last_location"] = {"lat": lat, "lng": lng, "updated_at": datetime.utcnow().isoformat()}
+
+    return jsonify({"ok": True})
+
+
+@app.route("/api/trip/share/<share_id>", methods=["GET"])
+def api_trip_share(share_id):
+    """Public, read-only lookup for the trip-tracking page. The share_id
+    is an unguessable random token (not a login), which is a reasonable
+    tradeoff for a lightweight demo feature - anyone who has the exact
+    link can view the trip's live location, same tradeoff most consumer
+    trip-sharing features make."""
+    with TRIPS_LOCK:
+        trip = next((t for t in ACTIVE_TRIPS.values() if t["share_id"] == share_id), None)
+        if not trip:
+            return jsonify({"error": "This tracking link wasn't found - the trip may have ended or the server restarted."}), 404
+        payload = {
+            "origin": trip["origin"],
+            "destination": trip["destination"],
+            "path_coords": trip["path_coords"],
+            "last_location": trip["last_location"],
+            "status": trip["status"],
+            "deadline_ts": trip["deadline_ts"],
+            "created_at": trip["created_at"],
+            "nearest_police_jurisdiction": trip.get("nearest_police_jurisdiction"),
+        }
+    return jsonify(payload)
+
+
+# -----------------------------------------------------------
 # Flask Endpoints
 # -----------------------------------------------------------
 @app.route("/")
 def index():
     return send_from_directory(STATIC_DIR, "index.html")
+
+
+@app.route("/track/<share_id>")
+def track_page(share_id):
+    return send_from_directory(STATIC_DIR, "track.html")
 
 
 @app.route("/api/localities", methods=["GET"])

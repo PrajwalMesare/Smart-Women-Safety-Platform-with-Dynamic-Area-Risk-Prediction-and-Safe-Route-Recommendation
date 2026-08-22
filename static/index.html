@@ -100,6 +100,26 @@
           <div id="routeCards"></div>
         </div>
 
+        <div id="tripStartCard" class="trip-card hidden">
+          <div class="trip-card-header"><i class="fa-solid fa-stopwatch"></i> Trip Safety Check-In</div>
+          <p class="trip-card-sub">Set an expected arrival time. If you don't check in by then, an alert with your last known location is sent automatically.</p>
+          <label class="trip-label">Check in within (minutes)</label>
+          <input type="number" id="tripDuration" min="1" max="360" value="30">
+          <button class="trip-start-btn" onclick="startTrip()"><i class="fa-solid fa-play"></i> Start Trip Check-In</button>
+        </div>
+
+        <div id="tripActiveCard" class="trip-card trip-active hidden">
+          <div class="trip-card-header"><i class="fa-solid fa-satellite-dish"></i> Trip In Progress</div>
+          <div class="trip-countdown" id="tripCountdown">--:--</div>
+          <p class="trip-card-sub" id="tripCardSub">Check in before time runs out, or an alert is sent automatically.</p>
+          <button class="trip-safe-btn" onclick="checkInTrip()"><i class="fa-solid fa-check"></i> I'm Safe — Arrived</button>
+          <div class="trip-share-row">
+            <input type="text" id="tripShareUrl" readonly>
+            <button onclick="copyTripShareLink()" title="Copy link"><i class="fa-solid fa-copy"></i></button>
+          </div>
+          <div class="trip-share-hint">Share this link with a trusted contact so they can watch your trip live.</div>
+        </div>
+
         <div class="legend">
           <div class="legend-title">Safety Legend</div>
           <div class="legend-item"><span class="legend-dot safe"></span> Low Risk Area</div>

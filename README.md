@@ -95,7 +95,35 @@ Two deliberate choices worth knowing about:
   is: everything else happens automatically on hold, then a pre-filled
   call button needs one tap to actually place the call.
 
+### Trip check-in and live tracking
+
+After finding a route, a **Trip Safety Check-In** card lets you set how
+many minutes until you expect to arrive. Starting it:
+1. Starts a countdown you can see in the app.
+2. Generates a shareable tracking link (`/track/<share_id>`) — open it in
+   any browser, no login needed, and it shows the trip's live location on
+   a map, updating every 5 seconds. Send this to a trusted contact so they
+   can watch you get there.
+3. If you tap **"I'm Safe — Arrived"** before time runs out, the trip ends
+   normally.
+4. If you *don't* check in before the deadline, an alert fires
+   automatically — same nearest-jurisdiction lookup and SMS pipeline as
+   the SOS button, using your last known location.
+
+Two things worth knowing about the current implementation:
+- **Trips are stored in memory, not a database.** This is fine for a demo
+  running as a single process (the Procfile already uses `--workers 1`
+  for this reason), but a trip is lost if the server restarts, and this
+  wouldn't scale to multiple worker processes without moving to a real
+  datastore (Redis, a database).
+- **The share link's `share_id` acts as the only access control** — it's
+  an unguessable random token, not a login. Anyone who has the exact link
+  can view that trip's live location. This is the same tradeoff most
+  consumer trip-sharing features make, but worth knowing before treating
+  the link as something to post publicly.
+
 ### Optional: real SOS SMS via Twilio
+
 
 By default, `/api/sos` returns an acknowledgment JSON only. To actually send
 an SMS, copy `.env.example` to `.env` and fill in Twilio credentials (a free

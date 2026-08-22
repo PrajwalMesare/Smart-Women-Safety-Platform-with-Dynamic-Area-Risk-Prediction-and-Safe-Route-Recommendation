@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Live Trip Tracking — SafeRoute Nagpur</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+<style>
+  :root {
+    --bg: #0b1020; --bg-card: #1a2340; --border: #2a355a; --text: #e8ecf7; --text-dim: #9aa5c4;
+    --safe: #34d399; --moderate: #fbbf24; --danger: #f87171; --accent-2: #a78bfa;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column; }
+  header { padding: 14px 18px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
+  header i { color: var(--accent-2); font-size: 20px; }
+  header h1 { font-size: 16px; margin: 0; }
+  #banner {
+    padding: 12px 18px; font-weight: 700; font-size: 13.5px; display: flex; align-items: center; gap: 8px;
+  }
+  #banner.active { background: rgba(167,139,250,0.15); color: var(--accent-2); }
+  #banner.arrived_safe { background: rgba(52,211,153,0.15); color: var(--safe); }
+  #banner.auto_alerted { background: rgba(248,113,113,0.18); color: var(--danger); }
+  #map { flex: 1; }
+  #info {
+    padding: 12px 18px; font-size: 12.5px; color: var(--text-dim); display: flex; gap: 20px; flex-wrap: wrap;
+    border-top: 1px solid var(--border);
+  }
+  #info b { color: var(--text); }
+  #error { padding: 40px 20px; text-align: center; color: var(--text-dim); }
+</style>
+</head>
+<body>
+<header>
+  <i class="fa-solid fa-shield-heart"></i>
+  <h1>Live Trip Tracking</h1>
+</header>
+<div id="banner" class="active"><i class="fa-solid fa-satellite-dish"></i> <span id="bannerText">Loading trip…</span></div>
+<div id="map"></div>
+<div id="info">
+  <div>Route: <b id="infoRoute">—</b></div>
+  <div>Last update: <b id="infoUpdated">—</b></div>
+  <div>Nearest station: <b id="infoStation">—</b></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const shareId = window.location.pathname.split("/").filter(Boolean).pop();
+let map, marker, pathLine;
+let initialized = false;
+
+function initMap(lat, lng) {
+  map = L.map("map").setView([lat, lng], 14);
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    attribution: "&copy; OpenStreetMap &copy; CARTO", subdomains: "abcd",
+  }).addTo(map);
+  marker = L.circleMarker([lat, lng], { radius: 10, color: "#60a5fa", fillColor: "#60a5fa", fillOpacity: 0.9, weight: 3 }).addTo(map);
+  initialized = true;
+}
+
+function setBanner(status) {
+  const banner = document.getElementById("banner");
+  const text = document.getElementById("bannerText");
+  banner.className = status;
+  if (status === "active") text.textContent = "Trip in progress — updating live";
+  else if (status === "arrived_safe") text.textContent = "Arrived safely — trip complete";
+  else if (status === "auto_alerted") text.textContent = "⚠ No check-in received — alert was sent automatically";
+  else text.textContent = status;
+}
+
+async function poll() {
+  try {
+    const res = await fetch(`/api/trip/share/${shareId}`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Trip not found");
+
+    const { lat, lng } = data.last_location;
+    if (!initialized) {
+      initMap(lat, lng);
+      if (data.path_coords && data.path_coords.length > 1) {
+        pathLine = L.polyline(data.path_coords, { color: "#34d399", weight: 4, opacity: 0.6 }).addTo(map);
+        map.fitBounds(pathLine.getBounds(), { padding: [30, 30] });
+      }
+    } else {
+      marker.setLatLng([lat, lng]);
+    }
+
+    setBanner(data.status);
+    document.getElementById("infoRoute").textContent = `${data.origin} → ${data.destination}`;
+    document.getElementById("infoUpdated").textContent = new Date(data.last_location.updated_at + "Z").toLocaleTimeString();
+    document.getElementById("infoStation").textContent = data.nearest_police_jurisdiction
+      ? `${data.nearest_police_jurisdiction.area_name} (${data.nearest_police_jurisdiction.phone || "no verified number"})`
+      : "—";
+  } catch (err) {
+    document.getElementById("map").innerHTML = `<div id="error"><i class="fa-solid fa-triangle-exclamation"></i><br>${err.message}</div>`;
+    clearInterval(pollInterval);
+  }
+}
+
+poll();
+const pollInterval = setInterval(poll, 5000);
+</script>
+</body>
+</html>

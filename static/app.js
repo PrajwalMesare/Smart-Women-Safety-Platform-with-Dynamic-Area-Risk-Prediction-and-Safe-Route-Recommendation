@@ -7,6 +7,8 @@ let areaMarkers = {};       // name -> L.circleMarker
 let areaData = {};          // name -> {lat, lon, risk_score_100, risk_band, confidence}
 let routeLayers = [];
 let liveOriginCoord = null; // [lat, lng] of the person's exact GPS point, when routing from live location
+let lastRouteInfo = null; // { origin, destination, pathCoords, suggestedMinutes } from the last successful search
+let currentTrip = null; // { trip_id, share_id, deadline_ts, countdownTimer, pollTimer, locationPushTimer }
 let userMarker = null;
 let watchId = null;
 let riskOverlayOn = true;
@@ -322,6 +324,16 @@ async function findRoutes() {
       }
     });
     if (bounds.length) map.fitBounds(bounds, { padding: [40, 40] });
+
+    // Offer trip check-in using the recommended route's timing and path.
+    const recommended = data.routes.find((r) => r.category === "recommended") || data.routes[0];
+    lastRouteInfo = {
+      origin, destination,
+      pathCoords: recommended?.path_coords || [],
+      suggestedMinutes: Math.ceil((recommended?.total_time_min || 20) + 10),
+    };
+    document.getElementById("tripDuration").value = lastRouteInfo.suggestedMinutes;
+    document.getElementById("tripStartCard").classList.remove("hidden");
   } catch (err) {
     cardsEl.innerHTML = `<div class="route-error">${err.message}</div>`;
   }
@@ -569,5 +581,117 @@ function renderCharts(data) {
       datasets: [{ label: "Crimes", data: areaEntries.map((e) => e[1]), backgroundColor: "#f87171" }],
     },
     options: { responsive: true, plugins: { legend: { display: false } } },
+  });
+}
+
+// ---------- Trip check-in ----------
+async function startTrip() {
+  if (!lastRouteInfo) return;
+  const duration = parseFloat(document.getElementById("tripDuration").value);
+  if (!duration || duration <= 0) {
+    alert("Enter a valid number of minutes.");
+    return;
+  }
+
+  const pos = await getCurrentLocationOnce();
+  const lat = pos.ok ? pos.lat : (areaData[lastRouteInfo.origin]?.lat || 21.145);
+  const lng = pos.ok ? pos.lng : (areaData[lastRouteInfo.origin]?.lon || 79.090);
+
+  try {
+    const res = await fetch(`${API}/api/trip/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        origin: lastRouteInfo.origin,
+        destination: lastRouteInfo.destination,
+        duration_min: duration,
+        lat, lng,
+        path_coords: lastRouteInfo.pathCoords,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || "Could not start trip");
+
+    const shareUrl = `${window.location.origin}${data.share_path}`;
+    document.getElementById("tripShareUrl").value = shareUrl;
+    document.getElementById("tripStartCard").classList.add("hidden");
+    document.getElementById("tripActiveCard").classList.remove("hidden");
+
+    currentTrip = { trip_id: data.trip_id, share_id: data.share_id, deadline_ts: data.deadline_ts };
+    startTripCountdown();
+    startTripLocationPush();
+  } catch (err) {
+    alert("Could not start trip check-in: " + err.message);
+  }
+}
+
+function startTripCountdown() {
+  const el = document.getElementById("tripCountdown");
+  const sub = document.getElementById("tripCardSub");
+
+  const tick = () => {
+    if (!currentTrip) return;
+    const remainingMs = currentTrip.deadline_ts * 1000 - Date.now();
+    if (remainingMs > 0) {
+      const mins = Math.floor(remainingMs / 60000);
+      const secs = Math.floor((remainingMs % 60000) / 1000);
+      el.textContent = `${mins}:${secs.toString().padStart(2, "0")}`;
+      el.classList.remove("overdue");
+    } else {
+      el.textContent = "0:00";
+      el.classList.add("overdue");
+      sub.textContent = "Time's up — an automatic alert has been sent with your last known location.";
+    }
+  };
+  tick();
+  currentTrip.countdownTimer = setInterval(tick, 1000);
+
+  // Poll our own trip status (via the public share endpoint) so the UI
+  // reflects it if the server-side auto-alert has actually fired.
+  currentTrip.pollTimer = setInterval(async () => {
+    if (!currentTrip) return;
+    try {
+      const res = await fetch(`${API}/api/trip/share/${currentTrip.share_id}`);
+      const data = await res.json();
+      if (data.status === "auto_alerted") {
+        sub.textContent = "Automatic alert sent — your last location and nearest station were shared.";
+      }
+    } catch (e) { /* ignore transient poll errors */ }
+  }, 5000);
+}
+
+function startTripLocationPush() {
+  currentTrip.locationPushTimer = setInterval(async () => {
+    if (!currentTrip) return;
+    const pos = await getCurrentLocationOnce();
+    if (!pos.ok) return;
+    fetch(`${API}/api/trip/${currentTrip.trip_id}/location`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lat: pos.lat, lng: pos.lng }),
+    }).catch(() => {});
+  }, 20000);
+}
+
+async function checkInTrip() {
+  if (!currentTrip) return;
+  try {
+    await fetch(`${API}/api/trip/${currentTrip.trip_id}/checkin`, { method: "POST" });
+  } catch (e) { /* best effort */ }
+
+  clearInterval(currentTrip.countdownTimer);
+  clearInterval(currentTrip.pollTimer);
+  clearInterval(currentTrip.locationPushTimer);
+  currentTrip = null;
+
+  document.getElementById("tripActiveCard").classList.add("hidden");
+  document.getElementById("tripStartCard").classList.remove("hidden");
+}
+
+function copyTripShareLink() {
+  const input = document.getElementById("tripShareUrl");
+  input.select();
+  navigator.clipboard?.writeText(input.value).catch(() => {
+    document.execCommand("copy");
   });
 }

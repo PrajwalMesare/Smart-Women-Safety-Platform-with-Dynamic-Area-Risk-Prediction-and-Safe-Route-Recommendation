@@ -206,10 +206,18 @@ def _load_real_road_graph():
         dist_km = data.get("length", 100) / 1000.0
         speed_kph = data.get("speed_kph", 25)  # urban default
         time_min = (dist_km / max(speed_kph, 5)) * 60
+        # OSM road classification - a real PER-STREET signal, unlike our
+        # risk dataset which only has per-area (30 zones) resolution. Used
+        # as a proxy for lighting/visibility: major roads are reliably
+        # better-lit and more overlooked than small residential/service
+        # roads or footpaths, regardless of which broader area they're in.
+        highway = data.get("highway", "unclassified")
+        if isinstance(highway, list):
+            highway = highway[0]
         if simple.has_edge(u, v):
             if simple[u][v]["weight"] <= time_min:
                 continue
-        simple.add_edge(u, v, weight=time_min, distance_km=dist_km, time_min=time_min)
+        simple.add_edge(u, v, weight=time_min, distance_km=dist_km, time_min=time_min, road_class=highway)
 
     # Map each locality centroid to its nearest OSM node, and record every
     # node's real coordinates so routes can be drawn following actual
@@ -341,20 +349,46 @@ def _blended_risk_at(lat, lon, dep_hour, risk_cache, top_n=5):
     return weighted_sum / total_weight if total_weight > 0 else 5.0
 
 
+# Road classification -> risk modifier, applied on top of the area-based
+# blended risk. This is a real per-street signal (from OSM), unlike the
+# area-level dataset, which can't distinguish a dark side street from a
+# well-lit main road in the same neighborhood. Major, well-traveled roads
+# get a bonus (safer); small, narrow, or isolated ways get a penalty.
+# Values are additive on the 0-10 risk scale, then clipped back to range.
+ROAD_CLASS_RISK_MODIFIER = {
+    "motorway": -1.5, "motorway_link": -1.5,
+    "trunk": -1.5, "trunk_link": -1.5,
+    "primary": -1.5, "primary_link": -1.2,
+    "secondary": -1.0, "secondary_link": -0.8,
+    "tertiary": -0.5, "tertiary_link": -0.4,
+    "residential": 0.0, "living_street": 0.0,
+    "unclassified": 0.3,
+    "service": 1.0,
+    "track": 1.5, "path": 1.5, "footway": 1.3, "pedestrian": 0.8,
+    "steps": 1.5, "cycleway": 1.0, "bridleway": 1.5,
+}
+
+
 def _edge_risk(u, v, dep_hour, risk_cache):
     """Risk for a single graph edge. In real_road_network mode, uses a
     smooth distance-weighted blend at the edge's exact midpoint (see
     _blended_risk_at) so routes can genuinely curve away from a risky
-    centroid. In sparse/legacy modes, nodes ARE the named localities
-    directly, so no sub-locality geography exists to blend - uses each
-    endpoint's own risk instead."""
+    centroid, adjusted by the street's real OSM road classification (a
+    per-street signal the area-level dataset can't provide - it can't
+    tell a dark side street apart from a well-lit main road in the same
+    neighborhood). In sparse/legacy modes, nodes ARE the named localities
+    directly, so no sub-locality geography or road-class data exists -
+    uses each endpoint's own area risk instead."""
     if GRAPH_MODE == "real_road_network" and u in NODE_COORDS and v in NODE_COORDS:
         edge_key = ("edge", u, v)
         if edge_key not in risk_cache:
             lat_u, lon_u = NODE_COORDS[u]
             lat_v, lon_v = NODE_COORDS[v]
             mid_lat, mid_lon = (lat_u + lat_v) / 2, (lon_u + lon_v) / 2
-            risk_cache[edge_key] = _blended_risk_at(mid_lat, mid_lon, dep_hour, risk_cache)
+            base_risk = _blended_risk_at(mid_lat, mid_lon, dep_hour, risk_cache)
+            road_class = G[u][v].get("road_class", "unclassified") if G.has_edge(u, v) else "unclassified"
+            modifier = ROAD_CLASS_RISK_MODIFIER.get(road_class, 0.0)
+            risk_cache[edge_key] = min(10.0, max(0.0, base_risk + modifier))
         return risk_cache[edge_key]
 
     loc_u = NODE_TO_LOCALITY.get(u, u if u in LOCALITIES else None)

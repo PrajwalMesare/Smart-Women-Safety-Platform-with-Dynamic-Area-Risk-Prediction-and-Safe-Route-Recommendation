@@ -182,6 +182,16 @@ This version fixes that at the root:
   clauses that silently swallowed all errors.
 - **A demoable frontend** (`static/index.html`) so the project can be shown
   working in a browser without a Flutter environment.
+- **Real per-street road classification as a risk signal**, when using the
+  real road network. The crime dataset only has resolution at the level of
+  30 broad areas, so it can't tell a dark side street apart from a
+  well-lit main road in the same neighborhood — both would get the exact
+  same risk score. OSM road classification (primary/secondary/residential/
+  footway/etc.) is a genuine per-street signal that doesn't have this
+  limitation, and is now blended in as a bonus/penalty on top of the
+  area-based risk: major, well-traveled roads get safer scores, small or
+  isolated ways (footpaths, service roads, tracks) get a penalty,
+  independent of which area they're geographically nearest to.
 
 ## Deployment
 
@@ -230,12 +240,20 @@ after idling can take ~30s to wake up — expected, not a bug.
 
 ## Known limitations / next steps
 
-- The per-locality environmental features in `data/localities.json` are
-  illustrative, not sourced from an official crime dataset — replace with
-  real municipal/police data for anything beyond a prototype.
+- `data/localities.json` is generated from the real crime dataset
+  (`nagpur_women_safety_2025_RECREATED_1446.csv`), but that dataset itself
+  is only 1,446 records across 30 areas — a modest sample, not an
+  official, continuously-updated crime feed. Treat scores as illustrative
+  of relative risk, not as precise real-world figures.
+- Road classification is used as a *proxy* for lighting/visibility (major
+  roads assumed better-lit and more overlooked than small ones) — it's
+  not directly measured streetlight data, which doesn't exist in any
+  dataset used here. It's a reasonable approximation, not ground truth.
 - The sparse fallback graph is a reasonable approximation, not real street
   geometry; run `graph_builder.py` somewhere with unrestricted internet
-  access to get the actual OSM road network.
+  access to get the actual OSM road network. Road classification (and its
+  risk-modifier benefit) is only available in that mode, not the sparse
+  fallback.
 - Twilio's free trial tier can only send SMS to verified numbers — fine for
   a demo, not for production use.
 - There's no persistence layer (database) — SOS records and routes aren't

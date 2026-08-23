@@ -1,260 +1,250 @@
-# Smart Women Safety Platform — Dynamic Area Risk Prediction & Safe Route Recommendation
+# SafeRoute Nagpur
 
-A prototype backend implementing a transparent, explainable area-risk model and
-risk-aware route recommendation, based on the paper "Development of a Smart
-Women Safety Platform with Dynamic Area Risk Prediction and Safe Route
-Recommendation."
+**Smart Women Safety Platform — Dynamic Area Risk Prediction & Safe Route Recommendation**
 
-## What's here
+A full-stack safety platform that predicts area-level risk from real crime data and recommends routes that balance travel time against safety exposure — not just the shortest path. Built around a transparent, explainable risk model and backed by real Nagpur crime and police-contact data.
 
-- `app.py` — Flask backend: risk prediction, route recommendation, SOS, analytics.
-- `graph_builder.py` — builds the routing graph (real road network via OSMnx,
-  or a sparse fallback graph if OSM isn't reachable).
-- `train_model.py` — trains/saves the RandomForest risk model. If
-  `nagpur_women_safety_2025_RECREATED_1446.csv` (the real crime dataset) is
-  present, trains on real data and regenerates `data/localities.json` from
-  real per-area averages (30 actual Nagpur areas); otherwise falls back to
-  a synthetic generator.
-- `nagpur_women_safety_2025_RECREATED_1446.csv` — the real dataset: 1,446
-  crime records across 30 Nagpur areas with coordinates, crime type, time
-  slot, lighting, crowd density, and police/hospital proximity.
-- `data/nagpur_police_contacts.csv` — real Nagpur police station contact
-  numbers, used by the SOS feature to show a verified direct-dial number
-  for the nearest jurisdiction when one is available (see the SOS section
-  below for how partial/unverified entries are handled).
-- `data/localities.json` — per-area features, regenerated from the real CSV.
-- `static/` — full frontend: risk-colored map (Map tab), a crime analytics
-  dashboard with charts (Analytics tab) built from the real CSV, and an
-  About tab. Live location tracking, an SOS bar with quick-dial numbers,
-  and dark/light theme are all wired to the real API — no Flutter needed.
-- `Smart_Women_Safety_Model.ipynb` — notebook version of the model/training
-  walkthrough, already executed with outputs, for browsing on GitHub.
+<p>
+  <img alt="Python" src="https://img.shields.io/badge/python-3.10+-blue.svg">
+  <img alt="Flask" src="https://img.shields.io/badge/backend-flask-black.svg">
+  <img alt="scikit-learn" src="https://img.shields.io/badge/model-random%20forest-orange.svg">
+  <img alt="Leaflet" src="https://img.shields.io/badge/maps-leaflet-green.svg">
+</p>
 
-## Setup
+---
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Features](#features)
+- [Tech Stack](#tech-stack)
+- [Getting Started](#getting-started)
+- [Configuration](#configuration)
+- [API Reference](#api-reference)
+- [Project Structure](#project-structure)
+- [How the Risk Model Works](#how-the-risk-model-works)
+- [Safety Features in Detail](#safety-features-in-detail)
+- [Deployment](#deployment)
+- [Known Limitations](#known-limitations)
+- [References](#references)
+
+---
+
+## Overview
+
+Standard navigation apps optimize for one thing: getting there fastest. **SafeRoute Nagpur** optimizes for a second, equally important variable — how safe the journey actually is — using real environmental and historical crime data specific to Nagpur, India.
+
+The platform:
+- Scores 30 real Nagpur areas for risk using street lighting, crowd density, time-of-day, and proximity to police, trained on a real 1,446-record crime dataset
+- Computes genuinely different fastest / safest / recommended routes across the real Nagpur road network, not just relabeled copies of the same path
+- Provides emergency response tools — one-tap SOS with verified police contacts, a trip check-in timer with automatic alerting, and live location sharing — designed with realistic safety tradeoffs in mind rather than overpromising
+
+## Features
+
+**🗺️ Risk-Aware Map**
+All 30 Nagpur areas rendered as color-coded markers (green/yellow/red) reflecting real-time computed risk, with a live/dark map style toggle.
+
+**🧭 Safe Route Recommendation**
+Computes real k-shortest-paths (Yen's algorithm) across the actual Nagpur road network, scored by a blend of travel time and area/street-level risk exposure — producing genuinely distinct fastest, safest, and recommended routes rather than one path with three labels.
+
+**📊 Crime Analytics Dashboard**
+Live charts and tables built directly from the real crime dataset — risk by area, crime type distribution, time-of-day breakdown, and a sortable area risk table.
+
+**🆘 One-Tap SOS**
+A 3-second press-and-hold triggers an alert with your live location, the nearest police jurisdiction (looked up from real per-area data), and a verified direct-dial number where one exists — falling back to the Nagpur Police HQ line rather than a guessed number.
+
+**⏱️ Trip Check-In Timer**
+Set an expected arrival time before a trip. If you don't confirm arrival, an alert fires automatically with your last known location — no manual intervention needed.
+
+**📍 Live Trip Sharing**
+Every trip generates a shareable, no-login-required tracking link a trusted contact can open to watch your location update in real time.
+
+**👤 Emergency Contact**
+Configure a specific person's name and number (stored locally in your browser) to be notified directly — with a live tracking link — if SOS or a trip alert ever triggers.
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Backend | Flask, Gunicorn |
+| ML Model | scikit-learn (RandomForestRegressor) |
+| Routing | NetworkX (k-shortest-paths), OSMnx (real road network) |
+| Data | pandas, real Nagpur crime & police-contact CSVs |
+| Frontend | Vanilla JS, Leaflet.js, Chart.js |
+| Messaging | Twilio (optional, for real SOS SMS) |
+
+## Getting Started
+
+### Prerequisites
+- Python 3.10+
+- pip
+
+### Installation
 
 ```bash
+git clone https://github.com/PrajwalMesare/Smart-Women-Safety-Platform-with-Dynamic-Area-Risk-Prediction-and-Safe-Route-Recommendation.git
+cd Smart-Women-Safety-Platform-with-Dynamic-Area-Risk-Prediction-and-Safe-Route-Recommendation
+
+python3 -m venv venv
+source venv/bin/activate      # Windows: venv\Scripts\activate
+
 pip install -r requirements.txt
+```
 
-# 1. Build the routing graph (run once)
+### Build the routing graph
+
+```bash
 python graph_builder.py
-# With normal internet access this downloads the real Nagpur road network
-# via OSMnx and caches it to data/nagpur_graph.graphml.
-# In network-restricted environments (CI, sandboxes) it automatically falls
-# back to a sparse k-nearest-neighbor graph over the 18 localities
-# (data/locality_graph.json) instead of a naive complete graph — this still
-# lets fastest/safest/recommended routes genuinely differ, unlike a complete
-# graph where every pair of points is one direct hop apart.
+```
 
-# 2. Train and save the risk model (run once)
+With normal internet access, this downloads the real Nagpur drivable road network via OSMnx and caches it locally. In network-restricted environments, it automatically falls back to a sparse, strongly-connected k-nearest-neighbor graph over the 30 areas — routes still genuinely diverge, just without full street-level geometry.
+
+### Train the risk model
+
+```bash
 python train_model.py
-# Produces data/safety_data.pkl and models/risk_model.joblib.
-# app.py loads the saved model on startup instead of retraining scikit-learn
-# every time the server restarts.
+```
 
-# 3. Start the backend
+Trains on the real crime dataset (falls back to a synthetic generator only if that CSV is missing) and saves the model so the server doesn't retrain on every restart.
+
+### Run it
+
+```bash
 python app.py
 ```
 
-Open **http://127.0.0.1:5000** in a browser for the built-in map demo, or hit
-the API directly (see below). Health check:
+Open **http://127.0.0.1:5000** for the full app, or hit the API directly:
 
 ```bash
 curl http://127.0.0.1:5000/api/health
 ```
 
-### SOS: 3-second hold, nearest station, and why calling uses national numbers
+> **macOS note:** if port 5000 is already in use (AirPlay Receiver commonly claims it), either disable AirPlay Receiver in System Settings, or run on a different port:
+> ```bash
+> python3 -c "import app; app.app.run(host='0.0.0.0', port=5051, debug=False)"
+> ```
 
-Pressing and holding the SOS button for 3 seconds:
-1. Captures your current GPS location (one-shot, doesn't require "Use My
-   Live Location" to already be active).
-2. Identifies the nearest police jurisdiction by name, using real per-area
-   data from `nagpur_women_safety_2025_RECREATED_1446.csv` (each area's
-   `Police_Station` value matches its own `Area` name in the real dataset).
-3. Sends an SMS with your location to your configured emergency contact,
-   if Twilio is set up (see below).
-4. Shows one-tap **Call Police (100)** / **Call Emergency (112)** buttons.
+## Configuration
 
-Two deliberate choices worth knowing about:
-- **A verified direct-dial number is shown when available; otherwise the
-  verified Nagpur Police HQ number is used as a fallback, never a
-  fabricated one.** `data/nagpur_police_contacts.csv` provides real
-  station-specific numbers for some areas; entries marked `"Available"`
-  in that file are placeholders, not verified numbers, and are
-  deliberately excluded. As of this writing, 13 of the 30 areas have a
-  matched, station-specific verified number; the remaining 17 fall back to
-  the Nagpur City Police headquarters line (0712-2560601, verified against
-  the official listing at nagpur.gov.in/police/) rather than showing no
-  number or a guessed one. The SOS response and UI clearly label which
-  case applies. If you have verified numbers for more specific stations,
-  add them to that CSV (`Type` must be `Police Station`, `Contact Number`
-  a real number) and they'll be picked up automatically on the next
-  server start.
-- **No website can silently auto-dial a phone.** Browsers block that on
-  purpose (it's exactly how a malicious site would auto-dial a premium
-  number). The closest honest equivalent — and what's implemented here —
-  is: everything else happens automatically on hold, then a pre-filled
-  call button needs one tap to actually place the call.
+All configuration is optional — the app runs fully functional without any of it, with graceful fallbacks. Copy `.env.example` to `.env` to enable:
 
-### Trip check-in and live tracking
+| Variable | Purpose |
+|---|---|
+| `TWILIO_ACCOUNT_SID` | Enables real SOS/trip-alert SMS via Twilio |
+| `TWILIO_AUTH_TOKEN` | Twilio auth token |
+| `TWILIO_FROM_NUMBER` | Your Twilio sending number |
+| `EMERGENCY_CONTACT_NUMBER` | Default SMS recipient if no per-browser Emergency Contact is set |
 
-After finding a route, a **Trip Safety Check-In** card lets you set how
-many minutes until you expect to arrive. Starting it:
-1. Starts a countdown you can see in the app.
-2. Generates a shareable tracking link (`/track/<share_id>`) — open it in
-   any browser, no login needed, and it shows the trip's live location on
-   a map, updating every 5 seconds. Send this to a trusted contact so they
-   can watch you get there.
-3. If you tap **"I'm Safe — Arrived"** before time runs out, the trip ends
-   normally.
-4. If you *don't* check in before the deadline, an alert fires
-   automatically — same nearest-jurisdiction lookup and SMS pipeline as
-   the SOS button, using your last known location.
+Without these, SOS and trip alerts still work — they simply skip the real SMS send and say so in the response.
 
-Two things worth knowing about the current implementation:
-- **Trips are stored in memory, not a database.** This is fine for a demo
-  running as a single process (the Procfile already uses `--workers 1`
-  for this reason), but a trip is lost if the server restarts, and this
-  wouldn't scale to multiple worker processes without moving to a real
-  datastore (Redis, a database).
-- **The share link's `share_id` acts as the only access control** — it's
-  an unguessable random token, not a login. Anyone who has the exact link
-  can view that trip's live location. This is the same tradeoff most
-  consumer trip-sharing features make, but worth knowing before treating
-  the link as something to post publicly.
-
-### Emergency contact
-
-The shield icon in the top-right header opens a small form for a name and
-phone number, stored **only in that browser's localStorage** — never sent
-to the server unless you actually trigger SOS or a trip's auto-alert. When
-one is set, both SOS and the trip check-in timeout send the SMS (and, on
-SOS, provide a tap-to-call link) to this specific person instead of only
-the server's globally-configured `EMERGENCY_CONTACT_NUMBER`. Both SOS and
-trip auto-alerts also now include a live-tracking link in the message, not
-just a one-time map pin — this reuses the same trip-tracking mechanism
-described above.
-
-### Optional: real SOS SMS via Twilio
-
-
-By default, `/api/sos` returns an acknowledgment JSON only. To actually send
-an SMS, copy `.env.example` to `.env` and fill in Twilio credentials (a free
-trial account works for testing), then load it before starting the server
-(e.g. `export $(cat .env | xargs)` or use `python-dotenv` in your own entry
-point). Without credentials configured, the endpoint still works exactly as
-before — it just skips the real SMS send and says so in the response.
-
-## API
+## API Reference
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `/api/health` | GET | Status, which routing graph mode is active, whether the ML model loaded |
-| `/api/localities` | GET | List of localities with coordinates (for maps/dropdowns) |
-| `/api/predict_risk` | POST | Predict a risk score/band from `lighting`, `dark_spot`, `crowd`, `police_km`, `hour` |
-| `/api/optimize_route` | POST | Recommended/fastest/safest routes between `origin` and `destination` localities at a given `departure_time` |
-| `/api/analytics` | GET | Aggregated stats from the real crime dataset (totals, per-area breakdown, chart data) — powers the Analytics tab |
-| `/api/sos` | POST | Activate an SOS with `lat`/`lng`; sends a real SMS if Twilio is configured |
+| `/api/health` | GET | Server status, active routing graph mode, model load state |
+| `/api/localities` | GET | All 30 areas with coordinates and current risk score/band |
+| `/api/predict_risk` | POST | Risk score/band from `lighting`, `dark_spot`, `crowd`, `police_km`, `hour` |
+| `/api/optimize_route` | POST | Fastest / safest / recommended routes between `origin` and `destination` |
+| `/api/analytics` | GET | Aggregated real crime-dataset statistics powering the Analytics dashboard |
+| `/api/sos` | POST | Trigger an SOS: nearest station lookup, optional SMS, live tracking link |
+| `/api/trip/start` | POST | Start a trip check-in timer with an expected-arrival deadline |
+| `/api/trip/<id>/checkin` | POST | Confirm safe arrival, canceling the auto-alert |
+| `/api/trip/<id>/location` | POST | Push a live location update for an active trip |
+| `/api/trip/share/<share_id>` | GET | Public, read-only trip status for the live-tracking page |
+| `/track/<share_id>` | GET | Standalone live-tracking page (no login required) |
 
-## What changed from the original prototype
+## Project Structure
 
-The first version of this backend had a routing graph where every locality
-connected directly to every other locality (a complete graph), and every
-edge in the city was assigned the exact same hardcoded risk value. Together
-those meant the "3 alternative routes" feature could never actually produce
-different routes — the shortest path between any two points was always the
-single direct edge, at the same computed risk.
+```
+├── app.py                          # Flask backend — all API endpoints
+├── graph_builder.py                 # Builds the routing graph (real OSM or sparse fallback)
+├── train_model.py                   # Trains and saves the risk model from real data
+├── model_notebook.py                # Generates the walkthrough notebook
+├── data/
+│   ├── localities.json              # Per-area features (regenerated from the CSV)
+│   └── nagpur_police_contacts.csv   # Verified real police station numbers
+├── nagpur_women_safety_2025_RECREATED_1446.csv   # Real crime dataset
+├── static/
+│   ├── index.html / app.js / style.css   # Main app: map, analytics, about, SOS
+│   └── track.html                   # Standalone live trip-tracking page
+├── Smart_Women_Safety_Model.ipynb   # Executed model/training notebook
+├── requirements.txt
+├── Procfile / build.sh              # Deployment config (Render/Railway-style platforms)
+└── .env.example                     # Optional Twilio configuration template
+```
 
-This version fixes that at the root:
+## How the Risk Model Works
 
-- **Real (or realistically sparse) road graph** instead of a complete graph,
-  so routes must pass through intermediate localities and can genuinely
-  diverge.
-- **Distinct per-locality risk features** instead of one feature set copied
-  onto every edge, so risk actually varies by location.
-- **Real k-shortest-paths** (`networkx.shortest_simple_paths`, Yen's
-  algorithm) for both time and risk weighting, instead of a single
-  perturbed-weight hack that usually just reproduced the same path.
-- **Pretrained, saved model** (`models/risk_model.joblib`) instead of
-  refitting scikit-learn on every server restart.
-- **`police_km` now actually affects the response** (evidence-coverage
-  confidence) — previously accepted by the API but silently unused.
-- **Specific exception handling + logging** instead of bare `except:`
-  clauses that silently swallowed all errors.
-- **A demoable frontend** (`static/index.html`) so the project can be shown
-  working in a browser without a Flutter environment.
-- **Real per-street road classification as a risk signal**, when using the
-  real road network. The crime dataset only has resolution at the level of
-  30 broad areas, so it can't tell a dark side street apart from a
-  well-lit main road in the same neighborhood — both would get the exact
-  same risk score. OSM road classification (primary/secondary/residential/
-  footway/etc.) is a genuine per-street signal that doesn't have this
-  limitation, and is now blended in as a bonus/penalty on top of the
-  area-based risk: major, well-traveled roads get safer scores, small or
-  isolated ways (footpaths, service roads, tracks) get a penalty,
-  independent of which area they're geographically nearest to.
+Each area's risk score blends:
+- **50%** crime proxy (derived from historical incident data)
+- **30%** street lighting
+- **20%** crowd density
+
+adjusted by a time-of-day multiplier (risk rises in the evening and at night), then classified into **Green / Yellow / Red** bands. A RandomForestRegressor trained on the real dataset achieves **R² = 0.886**, with street lighting as the strongest predictor.
+
+For route scoring, when the real road network is available, per-street risk is refined further using two signals the area-level dataset alone can't provide:
+- **Distance-weighted blending** across nearby areas, so risk changes smoothly moving away from a hotspot instead of jumping abruptly at an area boundary
+- **Real OSM road classification** (primary/residential/footway/etc.) as a proxy for lighting and visibility, since a dark side street and a well-lit main road in the same neighborhood would otherwise score identically
+
+## Safety Features in Detail
+
+### SOS
+Holding the SOS button for 3 seconds captures your location, looks up the nearest real police jurisdiction, and shows a verified direct-dial number where one exists (13 of 30 areas currently), falling back to the verified Nagpur Police HQ line otherwise — never a fabricated number. True silent auto-dialing isn't possible from any website (a deliberate browser security restriction), so the flow automates everything except the final tap to place the call.
+
+### Trip Check-In
+Set an expected arrival time before a trip; if you don't confirm arrival, an automatic alert fires using the same verified-contact pipeline as SOS. Trip state is stored in-memory (not a database) — appropriate for a single-process demo deployment, but not yet built for horizontal scaling or restart persistence.
+
+### Live Trip Sharing
+Every trip generates a shareable link anyone can open to watch it live, no login required. The link's random token is the only access control — the same tradeoff most consumer trip-sharing tools make.
+
+### Emergency Contact
+A name and number entered via the header's shield icon, stored only in your browser's local storage, used to override the default SMS recipient for that browser's SOS/trip alerts.
 
 ## Deployment
 
-The Flask dev server (`python app.py`) is fine for local testing but isn't
-meant for production. For an actual deploy:
+The Flask dev server is for local use only. For production:
 
 ```bash
 gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
 ```
 
-`Procfile` and `build.sh` are included for platforms that use them
-(Render, Railway, and similar). `build.sh` runs `pip install`,
-`graph_builder.py`, and `train_model.py` as one build step — if the
-platform's network can't reach OpenStreetMap, `graph_builder.py` still
-succeeds by falling back to the sparse locality graph automatically, so the
-build won't fail either way.
+`Procfile` and `build.sh` are ready for Render, Railway, and similar platforms.
 
-### Render.com (free tier, simplest option)
+**Render.com (free tier):**
+1. New Web Service → connect this repo
+2. Build command: `bash build.sh`
+3. Start command: `gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120`
+4. Add Twilio env vars if real SMS is wanted (optional)
 
-1. Push this repo to GitHub (already done).
-2. On [render.com](https://render.com) → **New** → **Web Service** → connect
-   this repo.
-3. Settings:
-   - **Build Command**: `bash build.sh`
-   - **Start Command**: `gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120`
-   - **Instance type**: Free is fine for a demo.
-4. If you want real SOS SMS, add `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`,
-   `TWILIO_FROM_NUMBER`, `EMERGENCY_CONTACT_NUMBER` under **Environment**
-   (never commit these to the repo — see `.env.example`).
-5. Deploy. Render gives you a public URL like
-   `https://your-app.onrender.com` — open it directly for the map demo, or
-   point a Flutter/other frontend at it instead of `10.0.2.2:5000`.
+> **Memory note:** the real road network (~110,000 edges) can exceed the
+> free tier's 512MB limit and crash on startup. `graph_builder.py` only
+> downloads the real network when it can reach OpenStreetMap — if your
+> host's network can't reach it, it automatically falls back to the
+> lighter sparse graph instead, which fits comfortably. If your host *can*
+> reach OSM but doesn't have enough RAM, the practical fix is a paid tier
+> with more memory, or removing `data/nagpur_graph.graphml` before deploy
+> so the sparse fallback is used deliberately.
 
-Free-tier services on Render sleep after inactivity, so the first request
-after idling can take ~30s to wake up — expected, not a bug.
+Free-tier instances sleep after inactivity — the first request afterward can take ~30 seconds.
 
-### Alternatives
+## Known Limitations
 
-- **Railway** — same `build.sh` / gunicorn start command pattern, usually
-  detects Python automatically.
-- **Fly.io** — needs a `Dockerfile` instead of `Procfile`/`build.sh` if you
-  go this route.
-- **PythonAnywhere** — good free option for Flask specifically, but it
-  proxies WSGI directly rather than using gunicorn/Procfile; follow their
-  "Manual configuration" Flask guide and point it at `app.py`'s `app` object.
+- The crime dataset (1,446 records / 30 areas) is a modest sample, not a live official feed — treat risk scores as illustrative, not precise.
+- Road-classification risk weighting is a proxy for lighting/visibility, not directly measured streetlight data (which doesn't exist in any available dataset).
+- Only available in real-road-network mode; the sparse fallback graph doesn't have individual street geometry to draw from.
+- 17 of 30 areas don't yet have an independently verified police contact number and use the HQ fallback.
+- No persistence layer — trips and SOS events live in server memory only.
+- Twilio's free trial tier can only send SMS to pre-verified numbers.
 
-## Known limitations / next steps
+## References
 
-- `data/localities.json` is generated from the real crime dataset
-  (`nagpur_women_safety_2025_RECREATED_1446.csv`), but that dataset itself
-  is only 1,446 records across 30 areas — a modest sample, not an
-  official, continuously-updated crime feed. Treat scores as illustrative
-  of relative risk, not as precise real-world figures.
-- Road classification is used as a *proxy* for lighting/visibility (major
-  roads assumed better-lit and more overlooked than small ones) — it's
-  not directly measured streetlight data, which doesn't exist in any
-  dataset used here. It's a reasonable approximation, not ground truth.
-- The sparse fallback graph is a reasonable approximation, not real street
-  geometry; run `graph_builder.py` somewhere with unrestricted internet
-  access to get the actual OSM road network. Road classification (and its
-  risk-modifier benefit) is only available in that mode, not the sparse
-  fallback.
-- Twilio's free trial tier can only send SMS to verified numbers — fine for
-  a demo, not for production use.
-- There's no persistence layer (database) — SOS records and routes aren't
-  stored anywhere beyond the response.
+This project is inspired by and references research including:
+- Sohrabi et al., *"Safe Route-Finding: A Review of Literature and Future Directions,"* Accident Analysis & Prevention, 2022
+- Levy et al., *"SafeRoute: Learning to Navigate Streets Safely in an Urban Environment,"* ACM TIST, 2020
+- Agrawal et al., *"SafeRoutes: A Holistic Approach to Women's Safety through Advanced Clustering and GPS Integration,"* IEEE Access, 2024
+- *"Women Safety Platform with Safe Route Prediction Using Crime Data,"* IEEE IDCIoT, 2025
+- Sohrabi et al., *"Navigating to Safety: Necessity, Requirements and Barriers,"* Transportation Research Part C, 2022
+
+---
+
+*Built as a prototype demonstrating risk-aware navigation with real data. Not a substitute for official emergency services — always call 100 / 112 / 1091 directly in a genuine emergency.*

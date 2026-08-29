@@ -227,6 +227,17 @@ gunicorn app:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
 
 Free-tier instances sleep after inactivity — the first request afterward can take ~30 seconds.
 
+**PythonAnywhere (free tier alternative — doesn't sleep):**
+
+Unlike Render, PythonAnywhere's free web apps don't sleep after inactivity, which matters for the trip check-in timer's reliability. But there are real tradeoffs to know before choosing it:
+
+- **Outbound internet is whitelist-only.** OpenStreetMap/Overpass isn't on it, so real road network mode is never available — always the sparse fallback graph.
+- **Twilio needs an explicit proxy fix.** `api.twilio.com` is whitelisted, but the Twilio client doesn't auto-detect PythonAnywhere's outbound proxy. Without adding proxy configuration to `_send_sos_sms()`, real SOS/trip-alert SMS will fail even with correct credentials. This isn't implemented in the codebase yet.
+- **100 CPU-seconds/day** on the free tier (only counts active processing, not idle time) — likely sufficient for light personal use, a real ceiling under heavier traffic.
+- **Free-tier web apps expire after ~1 month of inactivity** and need manual reactivation from the dashboard — a quirk Render doesn't have.
+
+Reasonable choice if trip-timer reliability matters more to you than the real road network or zero-setup SMS.
+
 ## Known Limitations
 
 - The crime dataset (1,446 records / 30 areas) is a modest sample, not a live official feed — treat risk scores as illustrative, not precise.
@@ -237,6 +248,8 @@ Free-tier instances sleep after inactivity — the first request afterward can t
 - Twilio's free trial tier can only send SMS to pre-verified numbers.
 
 ## References
+
+📋 **Presenting this project?** See [`DEMO_SCRIPT.md`](DEMO_SCRIPT.md) for a ready-to-read walkthrough script covering every feature, its benefit, and answers to likely questions — including a 60-second elevator pitch version.
 
 This project is inspired by and references research including:
 - Sohrabi et al., *"Safe Route-Finding: A Review of Literature and Future Directions,"* Accident Analysis & Prevention, 2022

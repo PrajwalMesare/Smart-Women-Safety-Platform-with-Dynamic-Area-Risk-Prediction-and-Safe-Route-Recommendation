@@ -113,15 +113,6 @@ body {
 /* ===== MAP TAB ===== */
 #tabMap { position: relative; }
 #map { position: absolute; inset: 0; z-index: 1; background: #0b1020; }
-/* Dark map look via CSS filter on standard OpenStreetMap tiles, instead of
-   a separate dark-tile provider (CARTO's raster basemaps now require a
-   registered API key as of August 2026; plain OSM tiles remain free with
-   no signup, so dark mode is done this way instead of adding that
-   dependency). Applied to the Leaflet tile pane specifically so markers,
-   popups, and controls keep their normal (non-inverted) colors. */
-#map.map-dark-filter .leaflet-tile-pane {
-  filter: invert(1) hue-rotate(180deg) brightness(0.92) contrast(0.9) saturate(0.9);
-}
 
 .route-panel {
   position: absolute;

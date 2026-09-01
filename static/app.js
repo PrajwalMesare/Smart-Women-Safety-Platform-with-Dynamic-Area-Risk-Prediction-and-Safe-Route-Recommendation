@@ -2,7 +2,7 @@ const API = ""; // same origin
 
 // ---------- State ----------
 let map;
-let tileDark, tileLight, currentTile;
+let currentTile;
 let areaMarkers = {};       // name -> L.circleMarker
 let areaData = {};          // name -> {lat, lon, risk_score_100, risk_band, confidence}
 let routeLayers = [];
@@ -61,17 +61,23 @@ function initMap() {
   map = L.map("map", { zoomControl: false }).setView([21.145, 79.090], 12);
   L.control.zoom({ position: "bottomleft" }).addTo(map);
 
-  tileDark = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-    attribution: "&copy; OpenStreetMap &copy; CARTO",
-    subdomains: "abcd",
-    maxZoom: 20,
-  });
-  tileLight = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-    attribution: "&copy; OpenStreetMap &copy; CARTO",
-    subdomains: "abcd",
-    maxZoom: 20,
-  });
-  currentTile = tileDark.addTo(map);
+  // Plain OpenStreetMap tiles: permanently free, no API key or signup ever
+  // required. (CARTO's raster basemap tiles, used previously, started
+  // requiring a free-but-registered API key in August 2026 - rather than
+  // adding that dependency, dark mode below is done with a CSS filter on
+  // these same tiles instead of a second tile provider.)
+  currentTile = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: "&copy; OpenStreetMap contributors",
+    maxZoom: 19,
+  }).addTo(map);
+
+  applyMapTheme(document.documentElement.getAttribute("data-theme") || "dark");
+}
+
+function applyMapTheme(theme) {
+  const container = document.getElementById("map");
+  if (!container) return;
+  container.classList.toggle("map-dark-filter", theme === "dark");
 }
 
 // ---------- Localities / risk-colored markers ----------
@@ -140,8 +146,7 @@ function closeAreaInfo() {
 
 // ---------- Map controls ----------
 function toggleMapLayer() {
-  map.removeLayer(currentTile);
-  currentTile = currentTile === tileDark ? tileLight.addTo(map) : tileDark.addTo(map);
+  document.getElementById("map")?.classList.toggle("map-dark-filter");
 }
 
 function toggleRiskOverlay() {
@@ -363,14 +368,10 @@ function setTheme(theme) {
   document.getElementById("themeIcon").className = theme === "dark" ? "fa-solid fa-moon" : "fa-solid fa-sun";
   localStorage.setItem("saferoute-theme", theme);
 
-  // Keep the map tile style in sync with the UI theme.
-  if (map && tileDark && tileLight) {
-    const wanted = theme === "dark" ? tileDark : tileLight;
-    if (currentTile !== wanted) {
-      map.removeLayer(currentTile);
-      currentTile = wanted.addTo(map);
-      document.getElementById("layerToggleBtn")?.classList.toggle("active-layer", theme === "dark");
-    }
+  // Keep the map's look in sync with the UI theme.
+  if (map) {
+    applyMapTheme(theme);
+    document.getElementById("layerToggleBtn")?.classList.toggle("active-layer", theme === "dark");
   }
 }
 
